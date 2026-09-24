@@ -1,0 +1,719 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SS Inventory — Staff</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jsbarcode/3.11.5/JsBarcode.all.min.js"></script>
+<style>
+  :root{
+    --brand:#3B2416; --teal:#00909B; --bg:#F2F3F1; --card:#FFFFFF; --ink:#1E2226;
+    --muted:#6A7078; --line:#DADDD8; --ok:#1F8A4C; --bad:#C0392B; --warn:#B7791F;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0}
+  body{font-family:"IBM Plex Sans",-apple-system,"Segoe UI",Roboto,sans-serif;background:var(--bg);color:var(--ink);
+       font-variant-numeric:tabular-nums;font-size:16px;line-height:1.4}
+  header{background:var(--brand);color:#fff;padding:12px 16px;display:flex;justify-content:space-between;align-items:center}
+  header h1{font-size:17px;margin:0;font-weight:600}
+  header .who{font-size:13px;opacity:.85}
+  header button{background:none;border:1px solid rgba(255,255,255,.4);color:#fff;border-radius:6px;padding:4px 10px;font:inherit;font-size:13px;cursor:pointer}
+  nav{display:flex;overflow-x:auto;background:#fff;border-bottom:1px solid var(--line);position:sticky;top:0;z-index:5}
+  nav button{flex:1 0 auto;padding:14px 16px;border:0;background:none;font:inherit;font-weight:600;color:var(--muted);
+             border-bottom:3px solid transparent;cursor:pointer}
+  nav button.on{color:var(--brand);border-bottom-color:var(--teal)}
+  main{max-width:760px;margin:0 auto;padding:16px 16px 80px}
+  section{display:none} section.on{display:block}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:16px;margin-bottom:14px}
+  h2{font-size:18px;margin:0 0 10px}
+  h3{font-size:15px;margin:14px 0 6px}
+  label{display:block;font-size:13px;font-weight:600;color:var(--muted);margin:10px 0 4px}
+  input,select,textarea{width:100%;padding:11px 12px;border:1px solid var(--line);border-radius:8px;font:inherit;background:#fff;color:var(--ink)}
+  textarea{min-height:130px;font-size:14px}
+  input:focus,select:focus,textarea:focus,button:focus-visible{outline:3px solid rgba(0,144,155,.35);outline-offset:1px;border-color:var(--teal)}
+  .row{display:flex;gap:8px;flex-wrap:wrap} .row>*{flex:1 1 140px}
+  .btn{display:inline-block;border:0;border-radius:8px;padding:12px 16px;font:inherit;font-weight:600;cursor:pointer;margin-top:12px}
+  .btn.main{background:var(--brand);color:#fff;width:100%}
+  .btn.alt{background:#fff;color:var(--brand);border:1px solid var(--brand)}
+  .btn.small{padding:7px 12px;margin-top:6px;font-size:14px}
+  .btn.danger{background:#fff;color:var(--bad);border:1px solid var(--bad)}
+  .btn:disabled{opacity:.5;cursor:default}
+  .muted{color:var(--muted);font-size:14px}
+  .list{margin-top:8px}
+  .item{border:1px solid var(--line);border-radius:8px;padding:10px 12px;margin-top:8px;background:#fff}
+  .item.tap{cursor:pointer} .item.tap:hover{border-color:var(--teal)}
+  .item .id{font-weight:700}
+  .tag{display:inline-block;font-size:12px;font-weight:600;padding:2px 8px;border-radius:10px;background:#EEF0EC;color:var(--brand);margin-left:6px}
+  .tag.ok{background:#E3F2E8;color:var(--ok)} .tag.bad{background:#F8E3E1;color:var(--bad)} .tag.warn{background:#F7EEDC;color:var(--warn)}
+  /* the scan strip: the one loud thing on screen */
+  .scanbox{border:2px solid var(--brand);border-radius:12px;padding:14px;background:#fff}
+  .scanbox .prompt{font-size:20px;font-weight:700;margin-bottom:8px}
+  .scanbox input{font-size:22px;padding:14px;border-width:2px}
+  .strip{margin-top:12px;border-radius:10px;padding:14px 16px;font-size:18px;font-weight:600;display:none}
+  .strip.ok{display:block;background:var(--ok);color:#fff}
+  .strip.bad{display:block;background:var(--bad);color:#fff}
+  .strip.info{display:block;background:#E6F3F4;color:var(--brand)}
+  .progress{height:8px;background:#E4E6E2;border-radius:6px;overflow:hidden;margin:8px 0}
+  .progress>div{height:100%;background:var(--teal)}
+  canvas#sig{width:100%;height:180px;border:1px dashed var(--muted);border-radius:8px;background:#fff;touch-action:none}
+  #toast{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);background:var(--ink);color:#fff;padding:12px 18px;border-radius:8px;
+         font-size:15px;display:none;z-index:20;max-width:90%}
+  #login{max-width:420px;margin:40px auto}
+  #printArea{display:none}
+  @media (prefers-reduced-motion:no-preference){ .strip{animation:pop .18s ease-out} @keyframes pop{from{transform:scale(.98);opacity:.6}to{transform:none;opacity:1}} }
+  @media print{
+    body>*{display:none !important}
+    #printArea{display:block !important}
+    .labels-a4{display:grid;grid-template-columns:repeat(3,70mm);grid-auto-rows:37mm;width:210mm}
+    .labels-a4 .lab{width:70mm;height:37mm}
+    .labels-roll .lab{width:50mm;height:25mm;page-break-after:always}
+    .lab{display:flex;flex-direction:column;align-items:center;justify-content:center;overflow:hidden;padding:2mm;text-align:center}
+    .lab svg{max-width:100%;height:auto}
+    .lab .code{font-weight:700;font-size:11pt}
+    .lab .desc{font-size:7pt;line-height:1.1}
+    .note{font-family:Arial,sans-serif;font-size:11pt;padding:10mm}
+    .note table{width:100%;border-collapse:collapse;margin-top:6mm}
+    .note th,.note td{border:1px solid #444;padding:2mm;text-align:left;font-size:10pt}
+    .note .sigs{display:flex;gap:10mm;margin-top:14mm}
+    .note .sigs div{flex:1;border-top:1px solid #000;padding-top:2mm;font-size:10pt}
+  }
+</style>
+<style id="pageStyle"></style>
+</head>
+<body>
+
+<div id="login" class="card" style="display:none">
+  <h2>Staff sign-in</h2>
+  <label for="lgName">Your name</label>
+  <input id="lgName" placeholder="e.g. Nancy" autocomplete="name">
+  <label for="lgKey">Staff key</label>
+  <input id="lgKey" type="password" autocomplete="off">
+  <button class="btn main" id="lgBtn">Sign in</button>
+  <p class="muted" id="lgMsg"></p>
+</div>
+
+<div id="app" style="display:none">
+<header>
+  <div><h1>Storage Solutions — Inventory</h1><div class="who" id="who"></div></div>
+  <button id="logout">Sign out</button>
+</header>
+<nav>
+  <button data-tab="receive" class="on">Receive</button>
+  <button data-tab="stock">Stock</button>
+  <button data-tab="despatch">Despatch</button>
+  <button data-tab="labels">Labels</button>
+  <button data-tab="clients">Clients</button>
+</nav>
+
+<main>
+
+<!-- RECEIVE -->
+<section id="tab-receive" class="on">
+  <div id="rxPick">
+    <div class="card">
+      <h2>Shipments waiting to be received</h2>
+      <div id="openShipments" class="list muted">Loading…</div>
+    </div>
+    <div class="card">
+      <h2>New shipment from a client list</h2>
+      <label for="nsClient">Client</label>
+      <select id="nsClient"></select>
+      <label for="nsRef">Their packing list / delivery note no.</label>
+      <input id="nsRef">
+      <label for="nsPaste">Paste the list (copy the rows straight from Excel)</label>
+      <textarea id="nsPaste" placeholder="Columns in this order, or with these headers:
+Description | PartNo | SerialNo | Shape | L_or_Dia_cm | W_cm | H_cm | Weight_kg | ExpiryHandoverDate | BatchProject | ClientRefPO | UnitCode | Notes"></textarea>
+      <button class="btn alt" id="nsCheck">Check the list</button>
+      <div id="nsPreview"></div>
+    </div>
+  </div>
+
+  <div id="rxWork" style="display:none">
+    <div class="card">
+      <div class="row" style="align-items:center">
+        <div><h2 id="rxTitle" style="margin:0"></h2><div class="muted" id="rxSub"></div></div>
+        <div style="flex:0 0 auto"><button class="btn alt small" id="rxBack">All shipments</button></div>
+      </div>
+      <div class="progress"><div id="rxBar" style="width:0"></div></div>
+      <div class="muted" id="rxCount"></div>
+    </div>
+
+    <div class="scanbox">
+      <div class="prompt" id="rxPrompt">Scan the item or its label</div>
+      <input id="rxScan" autocomplete="off" inputmode="none" aria-label="Scan">
+      <div class="strip" id="rxStrip"></div>
+      <button class="btn alt small" id="rxCancel" style="display:none">Cancel this item</button>
+    </div>
+
+    <div class="card" id="rxChoose" style="display:none;margin-top:14px">
+      <h2>Which item is this?</h2>
+      <input id="rxFilter" placeholder="Type part no. or description to narrow the list">
+      <div id="rxChoices" class="list"></div>
+      <button class="btn alt" id="rxExtraBtn">It's not on the list</button>
+      <div id="rxExtraForm" style="display:none">
+        <label for="exDesc">Description</label><input id="exDesc">
+        <div class="row">
+          <div><label for="exPart">Part no.</label><input id="exPart"></div>
+          <div><label for="exSerial">Serial no.</label><input id="exSerial"></div>
+        </div>
+        <button class="btn main" id="exGo">Continue — scan the shelf</button>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:14px">
+      <h2>Lines in this shipment</h2>
+      <div id="rxLines" class="list"></div>
+      <button class="btn danger" id="rxComplete">Complete shipment</button>
+      <p class="muted">Completing moves received items into stock and marks anything not received as missing.</p>
+    </div>
+  </div>
+</section>
+
+<!-- STOCK -->
+<section id="tab-stock">
+  <div class="card">
+    <h2>Find stock</h2>
+    <div class="row">
+      <div style="flex:3 1 200px"><input id="stQ" placeholder="Barcode, client, part no., description, location…"></div>
+      <div><select id="stStatus"><option value="In">In stock</option><option value="Despatched">Despatched</option>
+        <option value="Collected">Collected</option><option value="">Any status</option></select></div>
+    </div>
+    <button class="btn main" id="stGo">Search</button>
+    <div id="stResults" class="list"></div>
+  </div>
+</section>
+
+<!-- DESPATCH -->
+<section id="tab-despatch">
+  <div id="dsPick">
+    <div class="card">
+      <h2>Client requests waiting</h2>
+      <div id="reqList" class="list muted">Loading…</div>
+    </div>
+    <div class="card">
+      <h2>Despatch without a request</h2>
+      <label for="dsClient">Client</label><select id="dsClient"></select>
+      <button class="btn alt" id="dsStartFree">Start despatch</button>
+    </div>
+    <div class="card">
+      <h2>Continue a despatch</h2>
+      <label for="dsNo">Despatch no.</label><input id="dsNo" placeholder="DSP-00001">
+      <button class="btn alt" id="dsOpen">Open</button>
+    </div>
+  </div>
+
+  <div id="dsWork" style="display:none">
+    <div class="card">
+      <div class="row" style="align-items:center">
+        <div><h2 id="dsTitle" style="margin:0"></h2><div class="muted" id="dsSub"></div></div>
+        <div style="flex:0 0 auto"><button class="btn alt small" id="dsBack">All despatches</button></div>
+      </div>
+    </div>
+    <div class="scanbox">
+      <div class="prompt">Scan each item going out</div>
+      <input id="dsScan" autocomplete="off" inputmode="none" aria-label="Scan item out">
+      <div class="strip" id="dsStrip"></div>
+    </div>
+    <div class="card" style="margin-top:14px" id="dsRemainCard">
+      <h2>Still to pick</h2>
+      <div id="dsRemain" class="list"></div>
+    </div>
+    <div class="card">
+      <h2>Scanned out</h2>
+      <div id="dsDone" class="list"></div>
+      <div class="row">
+        <button class="btn alt" id="dsNote">Print delivery note</button>
+        <button class="btn main" id="dsPickup">Record pickup</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="puWork" style="display:none">
+    <div class="card">
+      <h2 id="puTitle">Pickup</h2>
+      <div class="row">
+        <div><label for="puDriver">Driver name</label><input id="puDriver"></div>
+        <div><label for="puPlate">Plate no.</label><input id="puPlate"></div>
+      </div>
+      <label for="puId">Driver ID (optional)</label><input id="puId">
+      <label>Driver signs here</label>
+      <canvas id="sig"></canvas>
+      <button class="btn alt small" id="sigClear">Clear signature</button>
+      <label for="puPhoto">Or: photo of the signed paper note</label>
+      <input id="puPhoto" type="file" accept="image/*" capture="environment">
+      <button class="btn main" id="puGo">Confirm collected</button>
+      <button class="btn alt" id="puBack">Back</button>
+    </div>
+  </div>
+</section>
+
+<!-- LABELS -->
+<section id="tab-labels">
+  <div class="card">
+    <h2>Print a batch of new labels</h2>
+    <div class="row">
+      <div><label for="lbCount">How many</label><input id="lbCount" type="number" min="1" max="500" value="24"></div>
+      <div><label for="lbType">Type</label><select id="lbType"><option value="item">Item (SS-)</option><option value="pallet">Pallet (PL-)</option></select></div>
+      <div><label for="lbLayout">Printing on</label><select id="lbLayout"><option value="a4">A4 sticker sheet (3×8)</option><option value="roll">Label printer 50×25 mm</option></select></div>
+    </div>
+    <button class="btn main" id="lbGo">Print labels</button>
+    <p class="muted">Numbers continue from the last batch and are never reused.</p>
+  </div>
+  <div class="card">
+    <h2>Reprint a lost label</h2>
+    <label for="rpId">Barcode of the item (search it on the Stock tab if unknown)</label>
+    <input id="rpId" placeholder="SS-000123">
+    <button class="btn alt" id="rpGo">Reprint</button>
+  </div>
+</section>
+
+<!-- CLIENTS -->
+<section id="tab-clients">
+  <div class="card">
+    <h2>Clients</h2>
+    <div id="clList" class="list muted">Loading…</div>
+  </div>
+  <div class="card">
+    <h2 id="clFormTitle">Add a client</h2>
+    <div class="row">
+      <div><label for="cName">Client name</label><input id="cName"></div>
+      <div><label for="cCode">Client code (their login)</label><input id="cCode" placeholder="C002"></div>
+    </div>
+    <div class="row">
+      <div><label for="cType">Type</label><select id="cType"><option>Business</option><option>Personal</option></select></div>
+      <div><label for="cContact">Contact person</label><input id="cContact"></div>
+    </div>
+    <div class="row">
+      <div><label for="cPhone">Phone</label><input id="cPhone"></div>
+      <div><label for="cEmail">Email</label><input id="cEmail"></div>
+    </div>
+    <div class="row">
+      <div><label for="cPickup">Client can see pickup records</label><select id="cPickup"><option>No</option><option>Yes</option></select></div>
+      <div><label for="cActive">Active</label><select id="cActive"><option>Yes</option><option>No</option></select></div>
+    </div>
+    <button class="btn main" id="cSave">Save client</button>
+    <button class="btn alt" id="cNew">Clear form</button>
+  </div>
+  <div class="card">
+    <h2>Set a client's portal password</h2>
+    <div class="row">
+      <div><label for="pwCode">Client code</label><input id="pwCode"></div>
+      <div><label for="pwPass">New password (6+ characters)</label><input id="pwPass" type="text" autocomplete="off"></div>
+    </div>
+    <button class="btn alt" id="pwGo">Set password</button>
+    <p class="muted">Send it to the client yourself. It is stored scrambled and cannot be read back.</p>
+  </div>
+</section>
+
+</main>
+</div>
+
+<div id="toast"></div>
+<div id="printArea"></div>
+
+<script>
+const GAS_URL = "https://script.google.com/macros/s/AKfycbz1hy1Z5su7y3GJ5Lzy4AigAGUwRiwXIxrHn0WvO-OrXS4zD-sZPY6dzhZG5B5J4aCP/exec";
+
+const $ = id => document.getElementById(id);
+const esc = s => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const fmtDate = v => { if(!v) return ""; const d = new Date(v); return isNaN(d) ? esc(v) : d.toLocaleDateString("en-GB"); };
+
+// ---------- storage (per-device convenience only) ----------
+const store = {
+  get(k){ try{ return JSON.parse(localStorage.getItem(k)); }catch(e){ return null; } },
+  set(k,v){ try{ localStorage.setItem(k, JSON.stringify(v)); }catch(e){} },
+  del(k){ try{ localStorage.removeItem(k); }catch(e){} }
+};
+let S = store.get("ssStaff") || {};
+let CLIENTS = [];
+
+function toast(msg){ const t=$("toast"); t.textContent=msg; t.style.display="block"; clearTimeout(t._h); t._h=setTimeout(()=>t.style.display="none",3500); }
+
+async function api(action, payload){
+  let res;
+  try{
+    res = await fetch(GAS_URL, { method:"POST", body: JSON.stringify(Object.assign({action, staffKey:S.key, user:S.user}, payload||{})) });
+  }catch(e){ throw new Error("No connection — check WiFi and try again"); }
+  const data = await res.json();
+  if(data && data.error) throw new Error(data.error);
+  return data;
+}
+
+function beep(ok){
+  try{
+    const a = new (window.AudioContext||window.webkitAudioContext)(), o = a.createOscillator(), g = a.createGain();
+    o.frequency.value = ok ? 880 : 220; o.connect(g); g.connect(a.destination); g.gain.value=.08;
+    o.start(); o.stop(a.currentTime + (ok ? .12 : .35));
+  }catch(e){}
+}
+function strip(id, kind, text){ const s=$(id); s.className="strip "+kind; s.textContent=text; if(kind!=="info") beep(kind==="ok"); }
+
+// ---------- sign in ----------
+async function tryLogin(){
+  const name=$("lgName").value.trim(), key=$("lgKey").value.trim();
+  if(!name||!key){ $("lgMsg").textContent="Enter your name and the staff key."; return; }
+  S={user:name,key}; $("lgMsg").textContent="Checking…";
+  try{ await api("staffPing"); store.set("ssStaff",S); startApp(); }
+  catch(e){ $("lgMsg").textContent=e.message==="Not authorised"?"That staff key is not right.":e.message; }
+}
+$("lgBtn").onclick=tryLogin;
+$("lgKey").addEventListener("keydown",e=>{ if(e.key==="Enter") tryLogin(); });
+$("logout").onclick=()=>{ store.del("ssStaff"); location.reload(); };
+
+async function startApp(){
+  $("login").style.display="none"; $("app").style.display="block";
+  $("who").textContent="Signed in as "+S.user;
+  await loadClients();
+  loadOpenShipments();
+  const dsp=store.get("ssDsp"); if(dsp) openDespatch(dsp.despatchNo, true);
+}
+
+// ---------- tabs ----------
+document.querySelectorAll("nav button").forEach(b=>b.onclick=()=>{
+  document.querySelectorAll("nav button").forEach(x=>x.classList.toggle("on",x===b));
+  document.querySelectorAll("section").forEach(s=>s.classList.toggle("on",s.id==="tab-"+b.dataset.tab));
+  if(b.dataset.tab==="receive" && $("rxWork").style.display==="none") loadOpenShipments();
+  if(b.dataset.tab==="despatch" && $("dsWork").style.display==="none" && $("puWork").style.display==="none") loadRequests();
+  if(b.dataset.tab==="clients") renderClients();
+});
+
+// ---------- clients ----------
+async function loadClients(){
+  try{ CLIENTS = await api("getClients"); }catch(e){ toast(e.message); CLIENTS=[]; }
+  const opts = CLIENTS.filter(c=>c.Active!=="No").map(c=>`<option value="${esc(c.ClientCode)}">${esc(c.ClientName)} (${esc(c.ClientCode)})</option>`).join("");
+  $("nsClient").innerHTML = opts || "<option value=''>Add a client first</option>";
+  $("dsClient").innerHTML = opts || "<option value=''>Add a client first</option>";
+  renderClients();
+}
+function renderClients(){
+  $("clList").innerHTML = CLIENTS.length ? CLIENTS.map((c,i)=>`
+    <div class="item tap" data-i="${i}"><span class="id">${esc(c.ClientName)}</span><span class="tag">${esc(c.ClientCode)}</span>
+      ${c.HasPassword?'<span class="tag ok">portal on</span>':'<span class="tag warn">no password</span>'}
+      ${c.Active==="No"?'<span class="tag bad">inactive</span>':''}
+      <div class="muted">${esc(c.ClientType||"")} ${c.ContactPerson?"· "+esc(c.ContactPerson):""} ${c.ContactPhone1?"· "+esc(c.ContactPhone1):""}</div></div>`).join("")
+    : "No clients yet — add one below.";
+  $("clList").querySelectorAll(".item").forEach(el=>el.onclick=()=>fillClient(CLIENTS[el.dataset.i]));
+}
+function fillClient(c){
+  $("clFormTitle").textContent="Edit "+c.ClientName;
+  $("cName").value=c.ClientName||""; $("cCode").value=c.ClientCode||""; $("cType").value=c.ClientType||"Business";
+  $("cContact").value=c.ContactPerson||""; $("cPhone").value=c.ContactPhone1||""; $("cEmail").value=c.ContactEmail1||"";
+  $("cPickup").value=c.ShowPickupToClient||"No"; $("cActive").value=c.Active||"Yes"; $("pwCode").value=c.ClientCode||"";
+  window.scrollTo({top:$("clFormTitle").offsetTop-60,behavior:"smooth"});
+}
+$("cNew").onclick=()=>{ ["cName","cCode","cContact","cPhone","cEmail"].forEach(i=>$(i).value=""); $("clFormTitle").textContent="Add a client"; };
+$("cSave").onclick=async()=>{
+  const client={ClientName:$("cName").value.trim(),ClientCode:$("cCode").value.trim(),ClientType:$("cType").value,
+    ContactPerson:$("cContact").value.trim(),ContactPhone1:$("cPhone").value.trim(),ContactEmail1:$("cEmail").value.trim(),
+    ShowPickupToClient:$("cPickup").value,Active:$("cActive").value};
+  try{ await api("saveClient",{client}); toast("Client saved"); await loadClients(); }catch(e){ toast(e.message); }
+};
+$("pwGo").onclick=async()=>{
+  try{ await api("setClientPassword",{clientCode:$("pwCode").value.trim(),password:$("pwPass").value}); toast("Password set"); $("pwPass").value=""; await loadClients(); }
+  catch(e){ toast(e.message); }
+};
+
+// ---------- receive: new shipment ----------
+const FIELDS=["Description","PartNo","SerialNo","Shape","L_or_Dia_cm","W_cm","H_cm","Weight_kg","ExpiryHandoverDate","BatchProject","ClientRefPO","UnitCode","Notes"];
+const ALIASES={description:"Description",desc:"Description",item:"Description",partno:"PartNo",part:"PartNo",partnumber:"PartNo",model:"PartNo",
+  serialno:"SerialNo",serial:"SerialNo",sn:"SerialNo",serialnumber:"SerialNo",shape:"Shape",lordiacm:"L_or_Dia_cm",l:"L_or_Dia_cm",length:"L_or_Dia_cm",
+  dia:"L_or_Dia_cm",diameter:"L_or_Dia_cm",wcm:"W_cm",w:"W_cm",width:"W_cm",hcm:"H_cm",h:"H_cm",height:"H_cm",weightkg:"Weight_kg",weight:"Weight_kg",kg:"Weight_kg",
+  expiryhandoverdate:"ExpiryHandoverDate",expiry:"ExpiryHandoverDate",handover:"ExpiryHandoverDate",expirydate:"ExpiryHandoverDate",handoverdate:"ExpiryHandoverDate",
+  batchproject:"BatchProject",batch:"BatchProject",project:"BatchProject",batchno:"BatchProject",projectno:"BatchProject",
+  clientrefpo:"ClientRefPO",ref:"ClientRefPO",po:"ClientRefPO",clientref:"ClientRefPO",boxref:"ClientRefPO",pono:"ClientRefPO",
+  unitcode:"UnitCode",unit:"UnitCode",unitno:"UnitCode",code:"UnitCode",notes:"Notes",note:"Notes"};
+let PARSED=[];
+function parseList(text){
+  const rows=text.split(/\r?\n/).filter(r=>r.trim()).map(r=>r.includes("\t")?r.split("\t"):r.split(","));
+  if(!rows.length) return [];
+  const head=rows[0].map(h=>ALIASES[h.toLowerCase().replace(/[^a-z]/g,"")]);
+  const hasHeader=head.filter(Boolean).length>=2;
+  const map=hasHeader?head:FIELDS;
+  return (hasHeader?rows.slice(1):rows).map(r=>{
+    const o={}; map.forEach((f,i)=>{ if(f && r[i]!==undefined) o[f]=r[i].trim(); });
+    if(o.Shape && /cyl|round|reel|roll/i.test(o.Shape)) o.Shape="Cylinder"; else if(o.Shape) o.Shape="Box";
+    return o;
+  }).filter(o=>o.Description||o.PartNo||o.SerialNo);
+}
+$("nsCheck").onclick=()=>{
+  PARSED=parseList($("nsPaste").value);
+  if(!PARSED.length){ $("nsPreview").innerHTML='<p class="muted">No items found in the pasted text.</p>'; return; }
+  $("nsPreview").innerHTML=`<p><strong>${PARSED.length} lines found.</strong> First few:</p>`+
+    PARSED.slice(0,4).map(o=>`<div class="item">${esc(o.Description||"")} <span class="muted">${esc(o.PartNo||"")} ${esc(o.SerialNo||"")}</span></div>`).join("")+
+    `<button class="btn main" id="nsCreate">Create shipment with ${PARSED.length} lines</button>`;
+  $("nsCreate").onclick=async()=>{
+    try{
+      const r=await api("createShipment",{clientCode:$("nsClient").value,inRef:$("nsRef").value.trim(),items:PARSED});
+      toast("Shipment "+r.shipmentNo+" created"); $("nsPaste").value=""; $("nsRef").value=""; $("nsPreview").innerHTML="";
+      openShipment(r.shipmentNo);
+    }catch(e){ toast(e.message); }
+  };
+};
+
+async function loadOpenShipments(){
+  try{
+    const list=await api("listOpenShipments");
+    $("openShipments").innerHTML=list.length?list.map(s=>`
+      <div class="item tap" data-no="${esc(s.shipmentNo)}"><span class="id">${esc(s.shipmentNo)}</span>
+        <span class="tag">${s.received}/${s.total} received</span><div class="muted">${esc(s.clientName)} ${s.inRef?"· "+esc(s.inRef):""}</div></div>`).join("")
+      :"Nothing waiting. Create a shipment below when a client sends a list.";
+    $("openShipments").querySelectorAll(".item").forEach(el=>el.onclick=()=>openShipment(el.dataset.no));
+  }catch(e){ $("openShipments").textContent=e.message; }
+}
+
+// ---------- receive: scanning ----------
+let RX={shipmentNo:null,lines:[],line:null,code:null,step:"item",extra:null};
+
+async function openShipment(no){
+  RX={shipmentNo:no,lines:[],line:null,code:null,step:"item",extra:null};
+  $("rxPick").style.display="none"; $("rxWork").style.display="block";
+  $("rxTitle").textContent=no; await refreshShipment(); resetScan();
+}
+async function refreshShipment(){
+  RX.lines=await api("getShipment",{shipmentNo:RX.shipmentNo});
+  const first=RX.lines[0]||{};
+  const done=RX.lines.filter(l=>l.Received==="Yes"||l.Received==="Extra").length;
+  $("rxSub").textContent=(first.ClientName||"")+(first.InRef?" · "+first.InRef:"");
+  $("rxBar").style.width=(RX.lines.length?Math.round(done/RX.lines.length*100):0)+"%";
+  $("rxCount").textContent=done+" of "+RX.lines.length+" received";
+  $("rxLines").innerHTML=RX.lines.map(l=>{
+    const t=l.Received==="Yes"?'<span class="tag ok">received</span>':l.Received==="Extra"?'<span class="tag warn">extra</span>':'<span class="tag">waiting</span>';
+    return `<div class="item">${esc(l.Description||"")} ${t}<div class="muted">${esc(l.PartNo||"")} ${esc(l.SerialNo||"")} ${l.ItemID?"· "+esc(l.ItemID)+" → "+esc(l.Location):""}</div></div>`;
+  }).join("");
+}
+function resetScan(){
+  RX.line=null; RX.code=null; RX.step="item"; RX.extra=null;
+  $("rxPrompt").textContent="Scan the item or its label";
+  $("rxCancel").style.display="none"; $("rxChoose").style.display="none"; $("rxExtraForm").style.display="none";
+  $("rxScan").value=""; $("rxScan").focus();
+}
+$("rxCancel").onclick=()=>{ resetScan(); strip("rxStrip","info","Cancelled — scan the next item."); };
+$("rxBack").onclick=()=>{ $("rxWork").style.display="none"; $("rxPick").style.display="block"; loadOpenShipments(); };
+
+$("rxScan").addEventListener("keydown",async e=>{
+  if(e.key!=="Enter") return;
+  const v=$("rxScan").value.trim(); $("rxScan").value="";
+  if(!v) return;
+  if(RX.step==="item") return handleItemScan(v);
+  if(RX.step==="location") return handleLocationScan(v);
+});
+
+async function handleItemScan(code){
+  strip("rxStrip","info","Checking "+code+"…");
+  try{
+    const r=await api("checkCode",{shipmentNo:RX.shipmentNo,code});
+    if(r.result==="used"||r.result==="partno"){ strip("rxStrip","bad",r.message); $("rxScan").focus(); return; }
+    RX.code=code; $("rxCancel").style.display="inline-block";
+    if(r.result==="matched"){ RX.line=r.line; askLocation(); return; }
+    showChoices(r.lines);
+  }catch(err){ strip("rxStrip","bad",err.message); }
+}
+function showChoices(lines){
+  strip("rxStrip","info","Barcode "+RX.code+" — choose which item it is on.");
+  $("rxPrompt").textContent="Choose the item below";
+  $("rxChoose").style.display="block"; $("rxFilter").value="";
+  const render=q=>{
+    const f=lines.filter(l=>!q||[l.Description,l.PartNo,l.SerialNo,l.UnitCode,l.ClientRefPO].join(" ").toLowerCase().includes(q));
+    $("rxChoices").innerHTML=f.slice(0,60).map(l=>`<div class="item tap" data-row="${l._row}">${esc(l.Description||"")}
+      <div class="muted">${esc(l.PartNo||"")} ${esc(l.SerialNo||"")} ${l.UnitCode?"· unit "+esc(l.UnitCode):""}</div></div>`).join("")||'<p class="muted">No waiting lines match.</p>';
+    $("rxChoices").querySelectorAll(".item").forEach(el=>el.onclick=()=>{ RX.line=lines.find(l=>l._row==el.dataset.row); $("rxChoose").style.display="none"; askLocation(); });
+  };
+  render(""); $("rxFilter").oninput=()=>render($("rxFilter").value.trim().toLowerCase());
+}
+$("rxExtraBtn").onclick=()=>{ $("rxExtraForm").style.display="block"; $("exDesc").focus(); };
+$("exGo").onclick=()=>{
+  RX.extra={Description:$("exDesc").value.trim(),PartNo:$("exPart").value.trim(),SerialNo:$("exSerial").value.trim()};
+  ["exDesc","exPart","exSerial"].forEach(i=>$(i).value=""); $("rxChoose").style.display="none"; askLocation();
+};
+function askLocation(){
+  RX.step="location";
+  const what=RX.extra?(RX.extra.Description||"extra item"):(RX.line.Description||RX.line.PartNo||"item");
+  $("rxPrompt").textContent="Now scan the shelf for: "+what;
+  strip("rxStrip","info",RX.code+" → "+what);
+  $("rxScan").focus();
+}
+async function handleLocationScan(loc){
+  try{
+    if(RX.extra) await api("addExtraItem",{shipmentNo:RX.shipmentNo,itemId:RX.code,location:loc,item:RX.extra});
+    else await api("receiveItem",{shipmentNo:RX.shipmentNo,row:RX.line._row,itemId:RX.code,location:loc});
+    strip("rxStrip","ok","Received "+RX.code+" → "+loc);
+    resetScan(); refreshShipment();
+  }catch(err){ strip("rxStrip","bad",err.message+" — scan the shelf again."); $("rxScan").focus(); }
+}
+$("rxComplete").onclick=async()=>{
+  const waiting=RX.lines.filter(l=>l.Received==="No").length;
+  if(!confirm("Complete "+RX.shipmentNo+"?"+(waiting?"\n\n"+waiting+" line(s) not received will be marked MISSING.":""))) return;
+  try{
+    const r=await api("completeShipment",{shipmentNo:RX.shipmentNo});
+    toast(r.received+" items moved into stock"+(r.missing.length?", "+r.missing.length+" missing":""));
+    $("rxBack").onclick();
+  }catch(e){ toast(e.message); }
+};
+
+// ---------- stock ----------
+async function searchStock(){
+  $("stResults").innerHTML='<p class="muted">Searching…</p>';
+  try{
+    const rows=await api("search",{q:$("stQ").value.trim(),status:$("stStatus").value});
+    $("stResults").innerHTML=rows.length?rows.map(r=>`
+      <div class="item"><span class="id">${esc(r.ItemID)}</span><span class="tag">${esc(r.Status)}</span>
+        <div>${esc(r.Description||"")}</div>
+        <div class="muted">${esc(r.ClientName)} · ${esc(r.PartNo||"")} ${r.SerialNo?"· SN "+esc(r.SerialNo):""} ${r.UnitCode?"· unit "+esc(r.UnitCode):""}</div>
+        <div class="muted">Shelf <strong>${esc(r.Location||"—")}</strong> · in ${fmtDate(r.DateIn)} ${r.DateOut?"· out "+fmtDate(r.DateOut):""} ${r.OutRef?"· "+esc(r.OutRef):""}</div>
+        <button class="btn alt small" data-rp="${esc(r.ItemID)}">Reprint label</button>
+        ${r.Status==="In"?`<button class="btn alt small" data-mv="${esc(r.ItemID)}">Move</button>`:""}
+      </div>`).join(""):'<p class="muted">Nothing found.</p>';
+    $("stResults").querySelectorAll("[data-rp]").forEach(b=>b.onclick=()=>reprint(b.dataset.rp));
+    $("stResults").querySelectorAll("[data-mv]").forEach(b=>b.onclick=async()=>{
+      const loc=prompt("Scan the new shelf for "+b.dataset.mv); if(!loc) return;
+      try{ await api("moveItem",{itemId:b.dataset.mv,location:loc.trim()}); toast("Moved to "+loc.trim()); searchStock(); }catch(e){ toast(e.message); }
+    });
+  }catch(e){ $("stResults").innerHTML='<p class="muted">'+esc(e.message)+'</p>'; }
+}
+$("stGo").onclick=searchStock;
+$("stQ").addEventListener("keydown",e=>{ if(e.key==="Enter") searchStock(); });
+
+// ---------- labels & printing ----------
+function setPage(layout){ $("pageStyle").textContent = layout==="roll" ? "@page{size:50mm 25mm;margin:0}" : "@page{size:A4;margin:10mm 0 0 0}"; }
+function printLabels(list, layout){
+  setPage(layout);
+  const area=$("printArea");
+  area.innerHTML=`<div class="${layout==="roll"?"labels-roll":"labels-a4"}">`+list.map((l,i)=>`
+    <div class="lab"><svg id="bc${i}"></svg><div class="code">${esc(l.code)}</div>${l.desc?`<div class="desc">${esc(l.desc)}</div>`:""}</div>`).join("")+`</div>`;
+  list.forEach((l,i)=>JsBarcode("#bc"+i,l.code,{format:"CODE128",displayValue:false,height:layout==="roll"?34:44,width:1.5,margin:0}));
+  setTimeout(()=>window.print(),150);
+}
+$("lbGo").onclick=async()=>{
+  const n=parseInt($("lbCount").value,10);
+  if(!(n>=1&&n<=500)) return toast("Choose between 1 and 500");
+  try{ const r=await api("printLabels",{count:n,type:$("lbType").value}); printLabels(r.codes.map(c=>({code:c})),$("lbLayout").value); }
+  catch(e){ toast(e.message); }
+};
+async function reprint(id){
+  try{
+    const r=await api("logReprint",{itemId:id});
+    printLabels([{code:r.itemId,desc:[r.clientName,r.description,r.partNo].filter(Boolean).join(" · ")}],$("lbLayout").value);
+  }catch(e){ toast(e.message); }
+}
+$("rpGo").onclick=()=>{ const v=$("rpId").value.trim(); if(v) reprint(v); };
+
+// ---------- despatch ----------
+let DS=null;
+async function loadRequests(){
+  try{
+    const rows=await api("getRequests",{status:"Pending"});
+    const groups={}; rows.forEach(r=>{ (groups[r.RequestNo]=groups[r.RequestNo]||[]).push(r); });
+    const keys=Object.keys(groups);
+    $("reqList").innerHTML=keys.length?keys.map(k=>{
+      const g=groups[k].slice().sort((a,b)=>String(a.Location).localeCompare(String(b.Location)));
+      return `<div class="item"><span class="id">${esc(k)}</span><span class="tag">${g.length} items</span>
+        <div class="muted">${esc(g[0].ClientName)} · ${fmtDate(g[0].Timestamp)} ${g[0].RequestedBy?"· by "+esc(g[0].RequestedBy):""}</div>
+        ${g.map(i=>`<div class="muted">${esc(i.Location||"?")} — ${esc(i.ItemID)} ${esc(i.Description||"")}</div>`).join("")}
+        <button class="btn main small" data-req="${esc(k)}" data-client="${esc(g[0].ClientCode)}">Start despatch</button></div>`;
+    }).join(""):"No requests waiting.";
+    $("reqList").querySelectorAll("[data-req]").forEach(b=>b.onclick=()=>startDespatch(b.dataset.client,b.dataset.req));
+  }catch(e){ $("reqList").textContent=e.message; }
+}
+async function startDespatch(clientCode, requestNo){
+  try{ const r=await api("startDespatch",{clientCode,requestNo:requestNo||""}); openDespatch(r.despatchNo); }
+  catch(e){ toast(e.message); }
+}
+$("dsStartFree").onclick=()=>{ if($("dsClient").value) startDespatch($("dsClient").value,""); };
+$("dsOpen").onclick=()=>{ const v=$("dsNo").value.trim(); if(v) openDespatch(v); };
+
+async function openDespatch(no, quiet){
+  try{
+    const note=await api("getDespatchNote",{despatchNo:no});
+    if(note.despatch.DateCollected){ store.del("ssDsp"); if(!quiet) toast(no+" was already collected"); return; }
+    DS={despatchNo:note.despatch.DespatchNo,clientCode:note.despatch.ClientCode,clientName:note.despatch.ClientName,requestNo:note.despatch.RequestNo};
+    store.set("ssDsp",DS);
+    $("dsPick").style.display="none"; $("puWork").style.display="none"; $("dsWork").style.display="block";
+    $("dsTitle").textContent=DS.despatchNo; $("dsSub").textContent=DS.clientName+(DS.requestNo?" · request "+DS.requestNo:"");
+    await refreshDespatch(note); $("dsScan").focus();
+  }catch(e){ if(!quiet) toast(e.message); else store.del("ssDsp"); }
+}
+async function refreshDespatch(note){
+  note=note||await api("getDespatchNote",{despatchNo:DS.despatchNo});
+  $("dsDone").innerHTML=note.items.length?note.items.map(i=>`<div class="item"><span class="id">${esc(i.ItemID)}</span> ${esc(i.Description||"")}
+    <div class="muted">${esc(i.PartNo||"")} ${i.SerialNo?"· SN "+esc(i.SerialNo):""}</div></div>`).join(""):'<p class="muted">Nothing scanned yet.</p>';
+  if(DS.requestNo){
+    const rq=(await api("getRequests",{status:"Pending"})).filter(r=>r.RequestNo===DS.requestNo)
+      .sort((a,b)=>String(a.Location).localeCompare(String(b.Location)));
+    $("dsRemainCard").style.display="block";
+    $("dsRemain").innerHTML=rq.length?rq.map(r=>`<div class="item"><strong>${esc(r.Location||"?")}</strong> — ${esc(r.ItemID)} ${esc(r.Description||"")}</div>`).join("")
+      :'<p class="muted">Everything on the request has been scanned.</p>';
+  } else $("dsRemainCard").style.display="none";
+}
+$("dsScan").addEventListener("keydown",async e=>{
+  if(e.key!=="Enter") return;
+  const v=$("dsScan").value.trim(); $("dsScan").value=""; if(!v) return;
+  try{ const r=await api("scanOut",{despatchNo:DS.despatchNo,itemId:v}); strip("dsStrip","ok","Out: "+r.item.ItemID+" "+(r.item.Description||"")); refreshDespatch(); }
+  catch(err){ strip("dsStrip","bad",err.message); }
+  $("dsScan").focus();
+});
+$("dsBack").onclick=()=>{ DS=null; store.del("ssDsp"); $("dsWork").style.display="none"; $("dsPick").style.display="block"; loadRequests(); };
+
+$("dsNote").onclick=async()=>{
+  try{
+    const n=await api("getDespatchNote",{despatchNo:DS.despatchNo}); const d=n.despatch;
+    setPage("a4");
+    $("printArea").innerHTML=`<div class="note">
+      <h2 style="margin:0">Storage Solutions JO — Delivery note</h2>
+      <p><strong>${esc(d.DespatchNo)}</strong> · ${esc(d.ClientName)} (${esc(d.ClientCode)}) ${d.RequestNo?"· Request "+esc(d.RequestNo):""}<br>
+      Date: ${new Date().toLocaleDateString("en-GB")} · Items: ${n.items.length} · Total weight: ${esc(d.TotalWeight_kg||0)} kg · Total CBM: ${esc(d.TotalCBM||0)}</p>
+      <table><tr><th>#</th><th>Barcode</th><th>Description</th><th>Part no.</th><th>Serial no.</th><th>Unit</th><th>Client ref / PO</th></tr>
+      ${n.items.map((i,k)=>`<tr><td>${k+1}</td><td>${esc(i.ItemID)}</td><td>${esc(i.Description)}</td><td>${esc(i.PartNo)}</td><td>${esc(i.SerialNo)}</td><td>${esc(i.UnitCode)}</td><td>${esc(i.ClientRefPO)}</td></tr>`).join("")}
+      </table>
+      <p style="margin-top:10mm">Driver name: ______________________ &nbsp; Plate no.: ______________ &nbsp; ID: ______________</p>
+      <div class="sigs"><div>Released by (Storage Solutions)</div><div>Received by (driver) — signature</div></div></div>`;
+    setTimeout(()=>window.print(),150);
+  }catch(e){ toast(e.message); }
+};
+
+// ---------- pickup ----------
+$("dsPickup").onclick=()=>{ $("dsWork").style.display="none"; $("puWork").style.display="block"; $("puTitle").textContent="Pickup — "+DS.despatchNo; sizeSig(); $("puDriver").focus(); };
+$("puBack").onclick=()=>{ $("puWork").style.display="none"; $("dsWork").style.display="block"; };
+
+const sig=$("sig"); let sctx, drawing=false, inked=false;
+function sizeSig(){ const r=sig.getBoundingClientRect(); sig.width=r.width*2; sig.height=r.height*2; sctx=sig.getContext("2d");
+  sctx.scale(2,2); sctx.lineWidth=2.4; sctx.lineCap="round"; sctx.strokeStyle="#111"; inked=false; }
+function pos(e){ const r=sig.getBoundingClientRect(); return [e.clientX-r.left,e.clientY-r.top]; }
+sig.addEventListener("pointerdown",e=>{ drawing=true; sig.setPointerCapture(e.pointerId); const [x,y]=pos(e); sctx.beginPath(); sctx.moveTo(x,y); });
+sig.addEventListener("pointermove",e=>{ if(!drawing) return; const [x,y]=pos(e); sctx.lineTo(x,y); sctx.stroke(); inked=true; });
+sig.addEventListener("pointerup",()=>drawing=false);
+$("sigClear").onclick=sizeSig;
+
+function photoToDataUrl(file){
+  return new Promise((ok,fail)=>{
+    const img=new Image(), rd=new FileReader();
+    rd.onload=()=>{ img.onload=()=>{ const m=1400, s=Math.min(1,m/Math.max(img.width,img.height)), c=document.createElement("canvas");
+      c.width=img.width*s; c.height=img.height*s; c.getContext("2d").drawImage(img,0,0,c.width,c.height); ok(c.toDataURL("image/jpeg",.72)); };
+      img.onerror=fail; img.src=rd.result; };
+    rd.onerror=fail; rd.readAsDataURL(file);
+  });
+}
+$("puGo").onclick=async()=>{
+  const driverName=$("puDriver").value.trim(), plateNo=$("puPlate").value.trim();
+  if(!driverName||!plateNo) return toast("Enter the driver name and plate no.");
+  let imageDataUrl="";
+  const f=$("puPhoto").files[0];
+  if(f) imageDataUrl=await photoToDataUrl(f); else if(inked) imageDataUrl=sig.toDataURL("image/png");
+  if(!imageDataUrl && !confirm("No signature or photo. Record the pickup anyway?")) return;
+  $("puGo").disabled=true;
+  try{
+    await api("recordPickup",{despatchNo:DS.despatchNo,driverName,plateNo,driverId:$("puId").value.trim(),imageDataUrl});
+    toast(DS.despatchNo+" collected");
+    ["puDriver","puPlate","puId"].forEach(i=>$(i).value=""); $("puPhoto").value="";
+    DS=null; store.del("ssDsp"); $("puWork").style.display="none"; $("dsPick").style.display="block"; loadRequests();
+  }catch(e){ toast(e.message); }
+  $("puGo").disabled=false;
+};
+
+// ---------- boot ----------
+if(S.key){ api("staffPing").then(startApp).catch(()=>{ store.del("ssStaff"); $("login").style.display="block"; }); }
+else $("login").style.display="block";
+</script>
+</body>
+</html>
