@@ -113,6 +113,15 @@
 <section id="tab-receive" class="on">
   <div id="rxPick">
     <div class="card">
+      <h2>Receive without a list</h2>
+      <p class="muted">For goods that arrive with no advance notice.</p>
+      <label for="nlClient">Client</label>
+      <select id="nlClient"></select>
+      <label for="nlRef">Delivery note no. (if there is one)</label>
+      <input id="nlRef">
+      <button class="btn main" id="nlStart">Start receiving</button>
+    </div>
+    <div class="card">
       <h2>Shipments waiting to be received</h2>
       <div id="openShipments" class="list muted">Loading…</div>
     </div>
@@ -145,6 +154,17 @@ Description | PartNo | SerialNo | Shape | L_or_Dia_cm | W_cm | H_cm | Weight_kg 
       <input id="rxScan" autocomplete="off" inputmode="none" aria-label="Scan">
       <div class="strip" id="rxStrip"></div>
       <button class="btn alt small" id="rxCancel" style="display:none">Cancel this item</button>
+    </div>
+
+    <div class="card" id="rxDescribe" style="display:none;margin-top:14px">
+      <h2>What is it?</h2>
+      <label for="nlDesc">Short description</label><input id="nlDesc" placeholder="e.g. Blue suitcase, 10kW inverter">
+      <div class="row">
+        <div><label for="nlPart">Part no. (optional)</label><input id="nlPart"></div>
+        <div><label for="nlSerial">Serial no. (optional)</label><input id="nlSerial"></div>
+      </div>
+      <label for="nlNotes">Notes (optional)</label><input id="nlNotes">
+      <button class="btn main" id="nlNext">Continue — scan the shelf</button>
     </div>
 
     <div class="card" id="rxChoose" style="display:none;margin-top:14px">
@@ -385,6 +405,7 @@ async function loadClients(){
   const opts = CLIENTS.filter(c=>c.Active!=="No").map(c=>`<option value="${esc(c.ClientCode)}">${esc(c.ClientName)} (${esc(c.ClientCode)})</option>`).join("");
   $("nsClient").innerHTML = opts || "<option value=''>Add a client first</option>";
   $("dsClient").innerHTML = opts || "<option value=''>Add a client first</option>";
+  $("nlClient").innerHTML = opts || "<option value=''>Add a client first</option>";
   renderClients();
 }
 function renderClients(){
@@ -464,20 +485,25 @@ async function loadOpenShipments(){
 }
 
 // ---------- receive: scanning ----------
-let RX={shipmentNo:null,lines:[],line:null,code:null,step:"item",extra:null};
+let RX={shipmentNo:null,lines:[],line:null,code:null,step:"item",extra:null,nolist:false};
 
 async function openShipment(no){
-  RX={shipmentNo:no,lines:[],line:null,code:null,step:"item",extra:null};
+  RX={shipmentNo:no,lines:[],line:null,code:null,step:"item",extra:null,nolist:false};
   $("rxPick").style.display="none"; $("rxWork").style.display="block";
   $("rxTitle").textContent=no; await refreshShipment(); resetScan();
 }
 async function refreshShipment(){
+  if(!RX.shipmentNo){
+    RX.lines=[]; $("rxBar").style.width="0"; $("rxCount").textContent="Nothing received yet";
+    $("rxSub").textContent=RX.clientName+(RX.inRef?" · "+RX.inRef:""); $("rxLines").innerHTML='<p class="muted">Scanned items will appear here.</p>';
+    return;
+  }
   RX.lines=await api("getShipment",{shipmentNo:RX.shipmentNo});
   const first=RX.lines[0]||{};
   const done=RX.lines.filter(l=>l.Received==="Yes"||l.Received==="Extra").length;
   $("rxSub").textContent=(first.ClientName||"")+(first.InRef?" · "+first.InRef:"");
   $("rxBar").style.width=(RX.lines.length?Math.round(done/RX.lines.length*100):0)+"%";
-  $("rxCount").textContent=done+" of "+RX.lines.length+" received";
+  $("rxCount").textContent=RX.nolist ? done+" item(s) received so far" : done+" of "+RX.lines.length+" received";
   $("rxLines").innerHTML=RX.lines.map(l=>{
     const t=l.Received==="Yes"?'<span class="tag ok">received</span>':l.Received==="Extra"?'<span class="tag warn">extra</span>':'<span class="tag">waiting</span>';
     return `<div class="item">${esc(l.Description||"")} ${t}<div class="muted">${esc(l.PartNo||"")} ${esc(l.SerialNo||"")} ${l.ItemID?"· "+esc(l.ItemID)+" → "+esc(l.Location):""}</div></div>`;
@@ -487,6 +513,7 @@ function resetScan(){
   RX.line=null; RX.code=null; RX.step="item"; RX.extra=null;
   $("rxPrompt").textContent="Scan the item or its label";
   $("rxCancel").style.display="none"; $("rxChoose").style.display="none"; $("rxExtraForm").style.display="none";
+  $("rxDescribe").style.display="none";
   $("rxScan").value=""; $("rxScan").focus();
 }
 $("rxCancel").onclick=()=>{ resetScan(); strip("rxStrip","info","Cancelled — scan the next item."); };
@@ -501,6 +528,7 @@ $("rxScan").addEventListener("keydown",async e=>{
 });
 
 async function handleItemScan(code){
+  if(RX.nolist) return handleNoListScan(code);
   strip("rxStrip","info","Checking "+code+"…");
   try{
     const r=await api("checkCode",{shipmentNo:RX.shipmentNo,code});
@@ -535,6 +563,7 @@ function askLocation(){
   $("rxScan").focus();
 }
 async function handleLocationScan(loc){
+  if(RX.nolist) return handleNoListLocation(loc);
   try{
     if(RX.extra) await api("addExtraItem",{shipmentNo:RX.shipmentNo,itemId:RX.code,location:loc,item:RX.extra});
     else await api("receiveItem",{shipmentNo:RX.shipmentNo,row:RX.line._row,itemId:RX.code,location:loc});
@@ -543,6 +572,7 @@ async function handleLocationScan(loc){
   }catch(err){ strip("rxStrip","bad",err.message+" — scan the shelf again."); $("rxScan").focus(); }
 }
 $("rxComplete").onclick=async()=>{
+  if(!RX.shipmentNo) return toast("Nothing received yet");
   const waiting=RX.lines.filter(l=>l.Received==="No").length;
   if(!confirm("Complete "+RX.shipmentNo+"?"+(waiting?"\n\n"+waiting+" line(s) not received will be marked MISSING.":""))) return;
   try{
@@ -551,6 +581,47 @@ $("rxComplete").onclick=async()=>{
     $("rxBack").onclick();
   }catch(e){ toast(e.message); }
 };
+
+// ---------- receive without a list ----------
+$("nlStart").onclick=()=>{
+  const code=$("nlClient").value; if(!code) return toast("Add the client first on the Clients tab");
+  const c=CLIENTS.find(x=>x.ClientCode===code)||{};
+  RX={shipmentNo:null,lines:[],line:null,code:null,step:"item",extra:null,nolist:true,
+      clientCode:code,clientName:c.ClientName||code,inRef:$("nlRef").value.trim()};
+  $("nlRef").value="";
+  $("rxPick").style.display="none"; $("rxWork").style.display="block";
+  $("rxTitle").textContent="New delivery — "+RX.clientName;
+  refreshShipment(); resetScan();
+  strip("rxStrip","info","Stick a label on the first item and scan it.");
+};
+async function handleNoListScan(code){
+  strip("rxStrip","info","Checking "+code+"…");
+  try{
+    const r=await api("checkFreeCode",{code});
+    if(r.result!=="ok"){ strip("rxStrip","bad",r.message); $("rxScan").focus(); return; }
+    RX.code=code; $("rxCancel").style.display="inline-block";
+    $("rxPrompt").textContent="Describe the item below";
+    strip("rxStrip","info","Barcode "+code+" — what is it?");
+    $("rxDescribe").style.display="block"; $("nlDesc").focus();
+  }catch(err){ strip("rxStrip","bad",err.message); }
+}
+function noListNext(){
+  const d=$("nlDesc").value.trim(); if(!d){ toast("Type a short description"); $("nlDesc").focus(); return; }
+  RX.extra={Description:d,PartNo:$("nlPart").value.trim(),SerialNo:$("nlSerial").value.trim(),Notes:$("nlNotes").value.trim()};
+  $("rxDescribe").style.display="none"; askLocation();
+}
+$("nlNext").onclick=noListNext;
+["nlDesc","nlPart","nlSerial","nlNotes"].forEach(i=>$(i).addEventListener("keydown",e=>{ if(e.key==="Enter") noListNext(); }));
+async function handleNoListLocation(loc){
+  try{
+    const r=await api("receiveNoList",{clientCode:RX.clientCode,inRef:RX.inRef,shipmentNo:RX.shipmentNo||"",
+                                       itemId:RX.code,location:loc,item:RX.extra});
+    RX.shipmentNo=r.shipmentNo; $("rxTitle").textContent=r.shipmentNo+" — "+RX.clientName;
+    strip("rxStrip","ok","Received "+RX.code+" → "+loc);
+    ["nlDesc","nlPart","nlSerial","nlNotes"].forEach(i=>$(i).value="");
+    resetScan(); refreshShipment();
+  }catch(err){ strip("rxStrip","bad",err.message+" — scan the shelf again."); $("rxScan").focus(); }
+}
 
 // ---------- stock ----------
 async function searchStock(){
