@@ -52,7 +52,8 @@
   .tag.ok{background:#E3F2E8;color:var(--ok)} .tag.bad{background:#F8E3E1;color:var(--bad)} .tag.warn{background:#F7EEDC;color:var(--warn)}
   .scanbox{border:2px solid var(--brand);border-radius:12px;padding:14px;background:#fff}
   .scanbox .prompt{font-size:20px;font-weight:700;margin-bottom:8px}
-  .scanbox input{font-size:22px;padding:14px;border-width:2px}
+  .scanbox #rxScan,.scanbox #dsScan,.scanbox #puScan{font-size:22px;padding:14px;border-width:2px}
+  .scanbox #rxLoc{font-size:20px;font-weight:700}
   .strip{margin-top:12px;border-radius:10px;padding:14px 16px;font-size:18px;font-weight:600;display:none}
   .strip.ok{display:block;background:var(--ok);color:#fff}
   .strip.bad{display:block;background:var(--bad);color:#fff}
@@ -166,15 +167,19 @@ Titles like Serial No, Batch #, Unit No, Gross W., Net W., GSM, Width, Container
     </div>
 
     <div class="scanbox">
-      <div class="prompt" id="rxPrompt">Scan the reel, box or its label</div>
+      <div class="row">
+        <div><label for="rxLoc">Shelf location — type it once, it stays for the next items</label>
+          <input id="rxLoc" autocomplete="off" placeholder="e.g. AK"></div>
+        <div><label for="rxNote">Condition note for the next item (optional)</label>
+          <input id="rxNote" autocomplete="off" placeholder="e.g. torn cover"></div>
+      </div>
+      <div class="prompt" id="rxPrompt" style="margin-top:12px">Scan the reel, box or its label</div>
       <input id="rxScan" autocomplete="off" inputmode="none" aria-label="Scan">
       <div class="strip" id="rxStrip"></div>
       <div class="detail" id="rxDetail" style="display:none">
         <div id="rxDetailInfo"></div>
         <div id="rxNeed"></div>
-        <label for="rxNote">Condition note (optional) — e.g. torn cover, scratched</label>
-        <input id="rxNote" placeholder="Leave empty if the item is fine">
-        <p class="muted" style="margin-bottom:0">Then scan the shelf in the box above.</p>
+        <button class="btn main" id="rxSave">Receive</button>
       </div>
       <button class="btn alt small" id="rxCancel" style="display:none">Cancel this item</button>
     </div>
@@ -191,7 +196,7 @@ Titles like Serial No, Batch #, Unit No, Gross W., Net W., GSM, Width, Container
         <div><label for="nlUnit">Unit No (optional)</label><input id="nlUnit"></div>
       </div>
       <label for="nlNotes">Condition note (optional)</label><input id="nlNotes">
-      <button class="btn main" id="nlNext">Continue — scan the shelf</button>
+      <button class="btn main" id="nlNext">Continue</button>
     </div>
 
     <div class="card" id="rxChoose" style="display:none;margin-top:14px">
@@ -209,7 +214,7 @@ Titles like Serial No, Batch #, Unit No, Gross W., Net W., GSM, Width, Container
           <div><label for="exBatch">Batch #</label><input id="exBatch"></div>
           <div><label for="exUnit">Unit No</label><input id="exUnit"></div>
         </div>
-        <button class="btn main" id="exGo">Continue — scan the shelf</button>
+        <button class="btn main" id="exGo">Continue</button>
       </div>
     </div>
 
@@ -412,11 +417,23 @@ Titles like Serial No, Batch #, Unit No, Gross W., Net W., GSM, Width, Container
 <script>
 // ⚠ Must be the /exec link of your Apps Script deployment (Deploy > Manage deployments).
 const GAS_URL = "https://script.google.com/macros/s/AKfycbz1hy1Z5su7y3GJ5Lzy4AigAGUwRiwXIxrHn0WvO-OrXS4zD-sZPY6dzhZG5B5J4aCP/exec";
+const APP_VERSION = "2.1";
 
 const $ = id => document.getElementById(id);
 const esc = s => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const fmtDate = v => { if(!v) return ""; const d = new Date(v); return isNaN(d) ? esc(v) : d.toLocaleDateString("en-GB",{day:"2-digit",month:"short",year:"numeric"}); };
 const nz = s => String(s == null ? "" : s).toLowerCase().replace(/[^a-z0-9]/g,"");
+
+/** Same rule as the Apps Script: exact, or mill label = printed reel no. (8+ digits) + up to 4 extra digits.
+ *  2433996474 (printed) = 24339964740247 (scanned). */
+function sameCode(a, b){
+  const x=String(a==null?"":a).trim().toUpperCase(), y=String(b==null?"":b).trim().toUpperCase();
+  if(!x||!y) return false;
+  if(x===y) return true;
+  const s=x.length<y.length?x:y, l=x.length<y.length?y:x;
+  if(s.length<8 || l.length-s.length>4) return false;
+  return /^\d+$/.test(s) && /^\d+$/.test(l) && l.indexOf(s)===0;
+}
 
 const store = {
   get(k){ try{ return JSON.parse(localStorage.getItem(k)); }catch(e){ return null; } },
@@ -495,16 +512,17 @@ async function tryLogin(){
   const name=$("lgName").value.trim(), key=$("lgKey").value.trim();
   if(!name||!key){ $("lgMsg").textContent="Enter your name and the staff key."; return; }
   S={user:name,key}; $("lgMsg").textContent="Checking…";
-  try{ await api("staffPing"); store.set("ssStaff",S); startApp(); }
+  try{ const p=await api("staffPing"); store.set("ssStaff",S); startApp(p); }
   catch(e){ $("lgMsg").textContent=e.message==="Not authorised"?"That staff key is not right.":e.message; }
 }
 $("lgBtn").onclick=tryLogin;
 $("lgKey").addEventListener("keydown",e=>{ if(e.key==="Enter") tryLogin(); });
 $("logout").onclick=()=>{ store.del("ssStaff"); location.reload(); };
 
-async function startApp(){
+async function startApp(ping){
   $("login").style.display="none"; $("app").style.display="block";
-  $("who").textContent="Signed in as "+S.user;
+  // shows both versions, so you can see at a glance whether the new Apps Script deployment is live
+  $("who").textContent="Signed in as "+S.user+" · app "+APP_VERSION+" · server "+((ping&&ping.version)||"?");
   const now=new Date(); $("bsMonth").value=now.getFullYear()+"-"+String(now.getMonth()+1).padStart(2,"0");
   await loadClients();
   loadVehicles();
@@ -609,12 +627,13 @@ $("nsCheck").onclick=()=>{
     PARSED.slice(0,4).map(o=>`<div class="item">${esc(o.Description||"")} <span class="muted">${itemLine(o,code)}</span></div>`).join("")+
     `<button class="btn main" id="nsCreate">Create shipment with ${PARSED.length} items</button>`;
   $("nsCreate").onclick=async()=>{
+    $("nsCreate").disabled=true;
     try{
       const r=await api("createShipment",{clientCode:code,inRef:$("nsRef").value.trim(),containerNo:$("nsCont").value.trim(),items:PARSED});
       toast("Shipment "+r.shipmentNo+" created"+(r.warning?"\n"+r.warning:""), !!r.warning);
       $("nsPaste").value=""; $("nsRef").value=""; $("nsCont").value=""; $("nsPreview").innerHTML="";
       openShipment(r.shipmentNo);
-    }catch(e){ toast(e.message, true); }
+    }catch(e){ toast(e.message, true); if($("nsCreate")) $("nsCreate").disabled=false; }
   };
 };
 
@@ -638,12 +657,18 @@ async function loadOpenShipments(){
 }
 
 // ---------- receive: scanning ----------
-let RX={shipmentNo:null,lines:[],line:null,code:null,step:"item",extra:null,nolist:false};
+// Flow: type the shelf once (it stays) → scan item → received straight away.
+// Only stops to ask when details are missing or no shelf has been typed yet.
+let RX={shipmentNo:null,lines:[],line:null,code:null,step:"item",extra:null,nolist:false,busy:false};
+const LAST_LOC={};   // last shelf typed, per shipment
 
 async function openShipment(no){
-  RX={shipmentNo:no,lines:[],line:null,code:null,step:"item",extra:null,nolist:false};
+  RX={shipmentNo:no,lines:[],line:null,code:null,step:"item",extra:null,nolist:false,busy:false};
   $("rxPick").style.display="none"; $("rxWork").style.display="block";
-  $("rxTitle").textContent=no; await refreshShipment(); resetScan();
+  $("rxLoc").value=LAST_LOC[no]||""; $("rxNote").value="";
+  $("rxTitle").textContent=no; strip("rxStrip","info",$("rxLoc").value?"Shelf "+$("rxLoc").value+" — scan the first item.":"Type the shelf location, then scan the first item.");
+  await refreshShipment(); resetScan();
+  if(!$("rxLoc").value) $("rxLoc").focus();
 }
 async function refreshShipment(){
   if(!RX.shipmentNo){
@@ -670,18 +695,30 @@ function resetScan(){
   RX.line=null; RX.code=null; RX.step="item"; RX.extra=null;
   $("rxPrompt").textContent="Scan the reel, box or its label";
   $("rxCancel").style.display="none"; $("rxChoose").style.display="none"; $("rxExtraForm").style.display="none";
-  $("rxDescribe").style.display="none"; $("rxDetail").style.display="none"; $("rxNote").value=""; $("rxNeed").innerHTML="";
+  $("rxDescribe").style.display="none"; $("rxDetail").style.display="none"; $("rxNeed").innerHTML="";
   $("rxScan").value=""; $("rxScan").focus();
 }
 $("rxCancel").onclick=()=>{ resetScan(); strip("rxStrip","info","Cancelled — scan the next item."); };
 $("rxBack").onclick=()=>{ $("rxWork").style.display="none"; $("rxPick").style.display="block"; loadOpenShipments(); };
+
+function updateSaveLabel(){
+  const l=$("rxLoc").value.trim();
+  $("rxSave").textContent=l?"Receive to shelf "+l:"Receive (type the shelf above first)";
+}
+$("rxLoc").addEventListener("input",updateSaveLabel);
+$("rxLoc").addEventListener("keydown",e=>{
+  if(e.key!=="Enter") return;
+  e.preventDefault();
+  if(RX.step==="ready") doReceive(); else $("rxScan").focus();
+});
+$("rxSave").onclick=()=>doReceive();
 
 $("rxScan").addEventListener("keydown",async e=>{
   if(e.key!=="Enter") return;
   const v=$("rxScan").value.trim(); $("rxScan").value="";
   if(!v) return;
   if(RX.step==="item") return handleItemScan(v);
-  if(RX.step==="location") return handleLocationScan(v);
+  strip("rxStrip","warn","Finish this item first — press Receive, or Cancel this item.");
 });
 
 async function handleItemScan(code){
@@ -691,19 +728,20 @@ async function handleItemScan(code){
     const r=await api("checkCode",{shipmentNo:RX.shipmentNo,code});
     if(r.result==="used"||r.result==="partno"){ strip("rxStrip","bad",r.message); $("rxScan").focus(); return; }
     RX.code=code; $("rxCancel").style.display="inline-block";
-    if(r.result==="matched"){ RX.line=r.line; askLocation(); return; }
+    if(r.result==="matched"){ RX.line=r.line; proceedReceive(); return; }
     showChoices(r.lines);
   }catch(err){ strip("rxStrip","bad",err.message); }
 }
 function showChoices(lines){
   strip("rxStrip","info","Barcode "+RX.code+" is not on the list by number — choose which item it is.");
   $("rxPrompt").textContent="Choose the item below";
+  RX.step="choose";
   $("rxChoose").style.display="block"; $("rxFilter").value="";
   const render=q=>{
     const f=lines.filter(l=>!q||[l.Description,l.PartNo,l.SerialNo,l.UnitCode,l.BatchProject,l.ClientRefPO].join(" ").toLowerCase().includes(q));
     $("rxChoices").innerHTML=f.slice(0,60).map(l=>`<div class="item tap" data-row="${l._row}">${esc(l.Description||"")}
       <div class="muted">${itemLine(l,l.ClientCode)}</div></div>`).join("")||'<p class="muted">No waiting lines match.</p>';
-    $("rxChoices").querySelectorAll(".item").forEach(el=>el.onclick=()=>{ RX.line=lines.find(l=>l._row==el.dataset.row); $("rxChoose").style.display="none"; askLocation(); });
+    $("rxChoices").querySelectorAll(".item").forEach(el=>el.onclick=()=>{ RX.line=lines.find(l=>l._row==el.dataset.row); $("rxChoose").style.display="none"; proceedReceive(); });
   };
   render(""); $("rxFilter").oninput=()=>render($("rxFilter").value.trim().toLowerCase());
 }
@@ -711,33 +749,60 @@ $("rxExtraBtn").onclick=()=>{ $("rxExtraForm").style.display="block"; $("exDesc"
 $("exGo").onclick=()=>{
   RX.extra={Description:$("exDesc").value.trim(),SerialNo:$("exSerial").value.trim(),Weight_kg:$("exGross").value.trim(),
             BatchProject:$("exBatch").value.trim(),UnitCode:$("exUnit").value.trim()};
-  ["exDesc","exSerial","exGross","exBatch","exUnit"].forEach(i=>$(i).value=""); $("rxChoose").style.display="none"; askLocation();
+  ["exDesc","exSerial","exGross","exBatch","exUnit"].forEach(i=>$(i).value=""); $("rxChoose").style.display="none"; proceedReceive();
 };
-function askLocation(){
-  RX.step="location";
+
+/** Item identified. Receive straight away if the shelf is typed and nothing is missing; otherwise ask. */
+function proceedReceive(){
+  RX.step="ready";
   const code=RX.clientCode||(RX.line&&RX.line.ClientCode);
   const what=RX.extra?(RX.extra.Description||"extra item"):(RX.line.Description||"item");
-  $("rxPrompt").textContent="Now scan the shelf";
-  strip("rxStrip","info",RX.code+" → "+what);
-  $("rxDetail").style.display="block";
-  $("rxDetailInfo").innerHTML=RX.line?`<strong>${esc(RX.line.Description||"")}</strong><div class="muted">${itemLine(RX.line,code)}</div>`:`<strong>${esc(what)}</strong>`;
   const miss=RX.line?required(code).filter(f=>String(RX.line[f]==null?"":RX.line[f]).trim()===""):[];
+  $("rxDetailInfo").innerHTML=RX.line?`<strong>${esc(RX.line.Description||"")}</strong><div class="muted">${itemLine(RX.line,code)}</div>`:`<strong>${esc(what)}</strong>`;
   $("rxNeed").innerHTML=miss.length?`<p class="need">Missing — fill in now:</p><div class="row">`+
     miss.map(f=>`<div><label for="need_${f}">${esc(L(code,f))}</label><input id="need_${f}" data-f="${f}"></div>`).join("")+`</div>`:"";
-  $("rxScan").focus();
+  if(!miss.length && $("rxLoc").value.trim()) return doReceive();
+  $("rxDetail").style.display="block"; updateSaveLabel();
+  strip("rxStrip","info",RX.code+" → "+what);
+  if(miss.length){
+    $("rxPrompt").textContent="Fill in the missing details, then press Receive";
+    $("rxNeed").querySelectorAll("input").forEach(i=>i.addEventListener("keydown",e=>{ if(e.key==="Enter") doReceive(); }));
+    $("rxNeed").querySelector("input").focus();
+  } else {
+    $("rxPrompt").textContent="Type the shelf location above, then press Receive";
+    $("rxLoc").focus();
+  }
 }
 function dockFields(){
   const o={}; $("rxNeed").querySelectorAll("input[data-f]").forEach(i=>{ if(i.value.trim()) o[i.dataset.f]=i.value.trim(); }); return o;
 }
-async function handleLocationScan(loc){
-  if(RX.nolist) return handleNoListLocation(loc);
-  const note=$("rxNote").value.trim();
+async function doReceive(){
+  if(RX.step!=="ready" || RX.busy) return;
+  const loc=$("rxLoc").value.trim();
+  if(!loc){
+    strip("rxStrip","bad","Type the shelf location first");
+    $("rxDetail").style.display="block"; updateSaveLabel(); $("rxLoc").focus(); return;
+  }
+  const note=$("rxNote").value.trim(), code=RX.code;
+  RX.busy=true; $("rxSave").disabled=true;
   try{
-    if(RX.extra) await api("addExtraItem",{shipmentNo:RX.shipmentNo,itemId:RX.code,location:loc,note,item:RX.extra});
-    else await api("receiveItem",{shipmentNo:RX.shipmentNo,row:RX.line._row,itemId:RX.code,location:loc,note,fields:dockFields()});
-    strip("rxStrip","ok","Received "+RX.code+" → "+loc+(note?" · noted":""));
+    if(RX.nolist){
+      const r=await api("receiveNoList",{clientCode:RX.clientCode,inRef:RX.inRef,shipmentNo:RX.shipmentNo||"",
+                                         itemId:code,location:loc,note,item:RX.extra});
+      RX.shipmentNo=r.shipmentNo; $("rxTitle").textContent=r.shipmentNo+" — "+RX.clientName;
+      ["nlDesc","nlSerial","nlGross","nlBatch","nlUnit","nlNotes"].forEach(i=>$(i).value="");
+    }
+    else if(RX.extra) await api("addExtraItem",{shipmentNo:RX.shipmentNo,itemId:code,location:loc,note,item:RX.extra});
+    else await api("receiveItem",{shipmentNo:RX.shipmentNo,row:RX.line._row,itemId:code,location:loc,note,fields:dockFields()});
+    LAST_LOC[RX.shipmentNo]=loc;
+    strip("rxStrip","ok","Received "+code+" → "+loc+(note?" · noted":""));
+    $("rxNote").value="";
     resetScan(); refreshShipment();
-  }catch(err){ strip("rxStrip","bad",err.message+" — scan the shelf again."); $("rxScan").focus(); }
+  }catch(err){
+    strip("rxStrip","bad",err.message);
+    $("rxDetail").style.display="block"; updateSaveLabel();
+  }
+  RX.busy=false; $("rxSave").disabled=false;
 }
 $("rxComplete").onclick=async()=>{
   if(!RX.shipmentNo) return toast("Nothing received yet");
@@ -754,20 +819,21 @@ $("rxComplete").onclick=async()=>{
 $("nlStart").onclick=()=>{
   const code=$("nlClient").value; if(!code) return toast("Add the client first on the Clients tab");
   const c=clientOf(code);
-  RX={shipmentNo:null,lines:[],line:null,code:null,step:"item",extra:null,nolist:true,
+  RX={shipmentNo:null,lines:[],line:null,code:null,step:"item",extra:null,nolist:true,busy:false,
       clientCode:code,clientName:c.ClientName||code,inRef:$("nlRef").value.trim()};
-  $("nlRef").value="";
+  $("nlRef").value=""; $("rxLoc").value=""; $("rxNote").value="";
   $("rxPick").style.display="none"; $("rxWork").style.display="block";
   $("rxTitle").textContent="New delivery — "+RX.clientName;
   refreshShipment(); resetScan();
-  strip("rxStrip","info","Scan the item's own barcode, or stick a label on it and scan that.");
+  strip("rxStrip","info","Type the shelf location, then scan the item's own barcode (or stick a label on it and scan that).");
+  $("rxLoc").focus();
 };
 async function handleNoListScan(code){
   strip("rxStrip","info","Checking "+code+"…");
   try{
     const r=await api("checkFreeCode",{code});
     if(r.result!=="ok"){ strip("rxStrip","bad",r.message); $("rxScan").focus(); return; }
-    RX.code=code; $("rxCancel").style.display="inline-block";
+    RX.code=code; RX.step="describe"; $("rxCancel").style.display="inline-block";
     $("rxPrompt").textContent="Describe the item below";
     strip("rxStrip","info","Barcode "+code+" — what is it?");
     $("rxDescribe").style.display="block"; $("nlDesc").focus();
@@ -777,21 +843,10 @@ function noListNext(){
   const d=$("nlDesc").value.trim(); if(!d){ toast("Type a short description"); $("nlDesc").focus(); return; }
   RX.extra={Description:d,SerialNo:$("nlSerial").value.trim(),Weight_kg:$("nlGross").value.trim(),
             BatchProject:$("nlBatch").value.trim(),UnitCode:$("nlUnit").value.trim(),Notes:$("nlNotes").value.trim()};
-  $("rxDescribe").style.display="none"; RX.step="location";
-  $("rxPrompt").textContent="Now scan the shelf"; strip("rxStrip","info",RX.code+" → "+d); $("rxScan").focus();
+  $("rxDescribe").style.display="none"; proceedReceive();
 }
 $("nlNext").onclick=noListNext;
 ["nlDesc","nlSerial","nlGross","nlBatch","nlUnit","nlNotes"].forEach(i=>$(i).addEventListener("keydown",e=>{ if(e.key==="Enter") noListNext(); }));
-async function handleNoListLocation(loc){
-  try{
-    const r=await api("receiveNoList",{clientCode:RX.clientCode,inRef:RX.inRef,shipmentNo:RX.shipmentNo||"",
-                                       itemId:RX.code,location:loc,item:RX.extra});
-    RX.shipmentNo=r.shipmentNo; $("rxTitle").textContent=r.shipmentNo+" — "+RX.clientName;
-    strip("rxStrip","ok","Received "+RX.code+" → "+loc);
-    ["nlDesc","nlSerial","nlGross","nlBatch","nlUnit","nlNotes"].forEach(i=>$(i).value="");
-    resetScan(); refreshShipment();
-  }catch(err){ strip("rxStrip","bad",err.message+" — scan the shelf again."); $("rxScan").focus(); }
-}
 
 // ---------- stock ----------
 const STATUS_TAG={In:"ok",Despatched:"warn",Collected:"",["Temporarily Issued"]:"warn",Returned:""};
@@ -814,7 +869,7 @@ async function searchStock(){
       </div>`).join(""):'<p class="muted">Nothing found.</p>';
     $("stResults").querySelectorAll("[data-rp]").forEach(b=>b.onclick=()=>reprint(b.dataset.rp));
     $("stResults").querySelectorAll("[data-mv]").forEach(b=>b.onclick=async()=>{
-      const loc=prompt("Scan the new shelf for "+b.dataset.mv); if(!loc) return;
+      const loc=prompt("Type the new shelf for "+b.dataset.mv); if(!loc) return;
       try{ await api("moveItem",{itemId:b.dataset.mv,location:loc.trim()}); toast("Moved to "+loc.trim()); searchStock(); }catch(e){ toast(e.message); }
     });
     $("stResults").querySelectorAll("[data-ed]").forEach(b=>b.onclick=()=>editForm(rows[b.dataset.ed], "ed"+b.dataset.ed));
@@ -886,7 +941,12 @@ async function startDespatch(clientCode, requestNo, temporary){
   try{ const r=await api("startDespatch",{clientCode,requestNo:requestNo||"",temporary:!!temporary}); openDespatch(r.despatchNo); }
   catch(e){ toast(e.message); }
 }
-$("dsStartFree").onclick=()=>{ if($("dsClient").value) startDespatch($("dsClient").value,"",$("dsTemp").checked); $("dsTemp").checked=false; };
+$("dsStartFree").onclick=async()=>{
+  if(!$("dsClient").value) return;
+  $("dsStartFree").disabled=true;   // one press = one despatch
+  await startDespatch($("dsClient").value,"",$("dsTemp").checked);
+  $("dsTemp").checked=false; $("dsStartFree").disabled=false;
+};
 $("dsOpen").onclick=()=>{ const v=$("dsNo").value.trim(); if(v) openDespatch(v); };
 
 async function openDespatch(no, quiet){
@@ -985,7 +1045,7 @@ function renderLoad(){
 $("puScan").addEventListener("keydown",e=>{
   if(e.key!=="Enter") return;
   const v=$("puScan").value.trim(); $("puScan").value=""; if(!v) return;
-  const it=DS.items.find(i=>[i.ItemID,i.SerialNo].some(x=>x&&String(x).toUpperCase()===v.toUpperCase()));
+  const it=DS.items.find(i=>sameCode(i.ItemID,v)||sameCode(i.SerialNo,v));   // long label or short reel no.
   if(!it){ strip("puStrip","bad","STOP — "+v+" is not on this despatch"); return; }
   const id=it.ItemID||it.SerialNo;
   if(LOADED[id]){ strip("puStrip","info",id+" is already on the truck"); return; }
