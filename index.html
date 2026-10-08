@@ -418,7 +418,7 @@ Titles like Serial No, Batch #, Unit No, Gross W., Net W., GSM, Width, Container
 <script>
 // ⚠ Must be the /exec link of your Apps Script deployment (Deploy > Manage deployments).
 const GAS_URL = "https://script.google.com/macros/s/AKfycbz1hy1Z5su7y3GJ5Lzy4AigAGUwRiwXIxrHn0WvO-OrXS4zD-sZPY6dzhZG5B5J4aCP/exec";
-const APP_VERSION = "2.4";
+const APP_VERSION = "2.5";
 
 const $ = id => document.getElementById(id);
 const esc = s => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
@@ -934,9 +934,14 @@ async function loadRequests(){
 }
 function reqLine(i){
   if(i.ItemID) return `<div class="muted"><strong>${esc(i.Location||"?")}</strong> — ${esc(i.ItemID)} ${esc(i.Description||"")}</div>`;
-  const sug=(i.Suggest||[]).map(s=>`${esc(s.Location||"?")} (${[s.BatchProject,s.UnitCode].filter(Boolean).map(esc).join(" / ")||esc(s.ItemID)})`).join(", ");
-  return `<div class="muted"><strong>${esc(i.Qty||1)} ×</strong> ${esc(i.Description||"")} <span class="tag">${esc(i.Available||0)} in stock</span>
-    ${sug?`<div>Oldest first: ${sug}</div>`:""}</div>`;
+  const byLoc={}, order=[];
+  (i.Suggest||[]).forEach(s=>{ const k=s.Location||"?"; if(!(k in byLoc)){ byLoc[k]=0; order.push(k); } byLoc[k]++; });
+  const sug=order.map(k=>`<strong>${esc(k)}</strong> × ${byLoc[k]}`).join(", ");
+  const spec=[i.BatchProject?"batch "+esc(i.BatchProject):"", i.GSM?esc(i.GSM)+" GSM":"", i.Width_mm?esc(i.Width_mm)+" mm":""].filter(Boolean).join(" · ");
+  const short=(i.Available||0)<(parseInt(i.Qty,10)||1);
+  return `<div class="muted"><strong>${esc(i.Qty||1)} ×</strong> ${esc(i.Description||"")} ${spec?"· "+spec:""}
+    <span class="tag ${short?"bad":""}">${esc(i.Available||0)} in stock</span>
+    ${sug?`<div style="font-size:16px;color:var(--ink);margin-top:4px">Go to (oldest first): ${sug}</div>`:""}</div>`;
 }
 async function startDespatch(clientCode, requestNo, temporary){
   try{ const r=await api("startDespatch",{clientCode,requestNo:requestNo||"",temporary:!!temporary}); openDespatch(r.despatchNo); }
