@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>SS Inventory — Staff</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Sans+Arabic:wght@400;500;600&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jsbarcode/3.11.5/JsBarcode.all.min.js"></script>
 <style>
   :root{
@@ -86,6 +86,26 @@
     .note .sigs div{flex:1;border-top:1px solid #000;padding-top:2mm;font-size:10pt}
   }
 </style>
+<style>
+  .ar{font-family:"IBM Plex Sans Arabic","Segoe UI",Tahoma,sans-serif;direction:rtl;unicode-bidi:isolate;display:block;font-weight:500;color:var(--muted);font-size:.9em;text-align:left}
+  h2 .ar{font-size:15px;margin-top:2px}
+  .opts{display:flex;flex-direction:column;gap:10px}
+  .opt{display:grid;grid-template-columns:44px minmax(0,1fr) auto;align-items:center;gap:14px;text-align:left;width:100%;background:#fff;color:var(--ink);
+       border:1px solid var(--line);border-radius:12px;padding:14px;cursor:pointer;font:inherit}
+  .opt:hover{border-color:var(--teal)}
+  .opt .ic{width:44px;height:44px;border-radius:10px;background:#E6F3F4;color:var(--brand);display:grid;place-items:center;font-weight:700;font-size:18px}
+  .opt b{display:block;font-size:18px;font-weight:600}
+  .opt .ar{font-size:16px;margin-top:1px}
+  .opt .s{display:block;color:var(--muted);font-size:13px;margin-top:2px}
+  .opt .arr{color:var(--muted);font-size:20px}
+  .opt.primary{background:var(--brand);border-color:var(--brand);color:#fff}
+  .opt.primary .ic{background:rgba(255,255,255,.18);color:#fff}
+  .opt.primary .ar,.opt.primary .s,.opt.primary .arr{color:rgba(255,255,255,.85)}
+  .linkbtn{display:block;margin:6px auto 0;background:none;border:0;color:var(--muted);font:500 14px inherit;cursor:pointer;text-decoration:underline;text-underline-offset:3px;text-align:center}
+  .linkbtn .ar{text-align:center}
+  header .hb{display:flex;gap:6px}
+  .btn .ar{color:inherit;opacity:.85;text-align:center;font-size:14px}
+</style>
 <style id="pageStyle"></style>
 </head>
 <body>
@@ -103,10 +123,12 @@
 <div id="app" style="display:none">
 <header>
   <div><h1>Storage Solutions — Inventory</h1><div class="who" id="who"></div></div>
-  <button id="logout">Sign out</button>
+  <div class="hb"><button id="homeBtn">Home · <span lang="ar" style="font-family:'IBM Plex Sans Arabic',sans-serif">الرئيسية</span></button><button id="logout">Sign out</button></div>
 </header>
-<nav>
-  <button data-tab="receive" class="on">Receive</button>
+<nav hidden>
+  <button data-tab="home" class="on">Home</button>
+  <button data-tab="load">Load</button>
+  <button data-tab="receive">Receive</button>
   <button data-tab="stock">Stock</button>
   <button data-tab="despatch">Despatch</button>
   <button data-tab="labels">Labels</button>
@@ -115,15 +137,49 @@
 
 <main>
 
+<!-- HOME -->
+<section id="tab-home" class="on">
+  <h2 style="font-size:24px;margin:4px 0 14px">What do you want to do?<span class="ar" lang="ar" style="font-size:18px">ماذا تريد أن تفعل؟</span></h2>
+  <div class="opts">
+    <button class="opt primary" data-go="despatch"><span class="ic">1</span><span><b>New request to despatch</b><span class="ar" lang="ar">تجهيز طلبية إلى الشحن</span><span class="s">Pick and scan items so they're ready</span></span><span class="arr">›</span></button>
+    <button class="opt" data-go="load"><span class="ic">2</span><span><b>Load the truck</b><span class="ar" lang="ar">تحميل الشاحنة</span><span class="s">Check each item on, driver signs</span></span><span class="arr">›</span></button>
+    <button class="opt" data-go="receive"><span class="ic">IN</span><span><b>Receive goods</b><span class="ar" lang="ar">استلام بضاعة</span><span class="s">A shipment arrived or items came back</span></span><span class="arr">›</span></button>
+    <button class="opt" data-go="stock"><span class="ic">?</span><span><b>Find stock</b><span class="ar" lang="ar">البحث عن البضاعة</span><span class="s">Search by batch, barcode or shelf</span></span><span class="arr">›</span></button>
+    <button class="opt" data-go="labels"><span class="ic">▥</span><span><b>Print labels</b><span class="ar" lang="ar">طباعة الملصقات</span><span class="s">New labels or reprint a lost one</span></span><span class="arr">›</span></button>
+  </div>
+  <button class="linkbtn" data-go="clients">Clients and billing<span class="ar" lang="ar">العملاء والفواتير</span></button>
+</section>
+
+<!-- LOAD THE TRUCK -->
+<section id="tab-load">
+  <div class="card">
+    <h2>Which order is the truck for?<span class="ar" lang="ar">لأي طلبية هذه الشاحنة؟</span></h2>
+    <div id="ldLast"></div>
+    <label for="ldNo">Despatch no.</label>
+    <input id="ldNo" placeholder="DSP-00042" autocomplete="off">
+    <button class="btn main" id="ldGo">Load this order<span class="ar" lang="ar">تحميل هذه الطلبية</span></button>
+    <p class="muted">The despatch no. is on the delivery note printed when the order was ready.</p>
+  </div>
+</section>
+
 <!-- RECEIVE -->
-<section id="tab-receive" class="on">
+<section id="tab-receive">
   <div id="rxPick">
-    <div class="card">
-      <h2>Shipments waiting to be received</h2>
+    <div class="card" id="rxChoice">
+      <h2>What arrived?<span class="ar" lang="ar">ماذا وصل؟</span></h2>
+      <div class="opts">
+        <button class="opt primary" data-rg="known"><span class="ic">▣</span><span><b>A shipment we were told about</b><span class="ar" lang="ar">شحنة متوقعة</span><span class="s">Pick it from the list, or paste a new packing list</span></span><span class="arr">›</span></button>
+        <button class="opt" data-rg="nolist"><span class="ic">+</span><span><b>Something with no list</b><span class="ar" lang="ar">بضاعة بدون قائمة</span><span class="s">Type it in as you go</span></span><span class="arr">›</span></button>
+        <button class="opt" data-rg="temp"><span class="ic">↩</span><span><b>Temporary issue items coming back</b><span class="ar" lang="ar">مواد مصروفة مؤقتاً</span><span class="s">Items that went out and are returning</span></span><span class="arr">›</span></button>
+      </div>
+    </div>
+    <button class="btn alt small" id="rxOther" hidden>‹ Other choices · <span lang="ar" style="font-family:'IBM Plex Sans Arabic',sans-serif">خيارات أخرى</span></button>
+    <div class="card" data-grp="known" hidden>
+      <h2>Shipments waiting to be received<span class="ar" lang="ar">شحنات بانتظار الاستلام</span></h2>
       <div id="openShipments" class="list muted">Loading…</div>
     </div>
-    <div class="card">
-      <h2>New shipment from a packing list</h2>
+    <div class="card" data-grp="known" hidden>
+      <h2>New shipment from a packing list<span class="ar" lang="ar">شحنة جديدة من قائمة التعبئة</span></h2>
       <label for="nsClient">Client</label>
       <select id="nsClient"></select>
       <div class="row">
@@ -137,8 +193,8 @@ Titles like Serial No, Batch #, Unit No, Gross W., Net W., GSM, Width, Container
       <button class="btn alt" id="nsCheck">Check the list</button>
       <div id="nsPreview"></div>
     </div>
-    <div class="card">
-      <h2>Receive without a list</h2>
+    <div class="card" data-grp="nolist" hidden>
+      <h2>Receive without a list<span class="ar" lang="ar">استلام بدون قائمة</span></h2>
       <p class="muted">For goods that arrive with no advance notice.</p>
       <label for="nlClient">Client</label>
       <select id="nlClient"></select>
@@ -146,8 +202,8 @@ Titles like Serial No, Batch #, Unit No, Gross W., Net W., GSM, Width, Container
       <input id="nlRef">
       <button class="btn main" id="nlStart">Start receiving</button>
     </div>
-    <div class="card">
-      <h2>Temporarily issued items coming back</h2>
+    <div class="card" data-grp="temp" hidden>
+      <h2>Temporary issue items coming back<span class="ar" lang="ar">مواد مصروفة مؤقتاً</span></h2>
       <label for="rtClient">Client</label>
       <select id="rtClient"></select>
       <label for="rtCodes">Barcodes or serial numbers coming back (one per line)</label>
@@ -230,7 +286,7 @@ Titles like Serial No, Batch #, Unit No, Gross W., Net W., GSM, Width, Container
 <!-- STOCK -->
 <section id="tab-stock">
   <div class="card">
-    <h2>Find stock</h2>
+    <h2>Find stock<span class="ar" lang="ar">البحث عن البضاعة</span></h2>
     <div class="row">
       <div style="flex:3 1 200px"><input id="stQ" placeholder="Barcode, serial, batch, unit, GRV, client, shelf…"></div>
       <div><select id="stStatus">
@@ -250,17 +306,17 @@ Titles like Serial No, Batch #, Unit No, Gross W., Net W., GSM, Width, Container
 <section id="tab-despatch">
   <div id="dsPick">
     <div class="card">
-      <h2>Client requests waiting</h2>
+      <h2>New requests to despatch<span class="ar" lang="ar">تجهيز طلبية إلى الشحن</span></h2>
       <div id="reqList" class="list muted">Loading…</div>
     </div>
     <div class="card">
-      <h2>Despatch without a request</h2>
+      <h2>Despatch without a request<span class="ar" lang="ar">تجهيز بدون طلب</span></h2>
       <label for="dsClient">Client</label><select id="dsClient"></select>
       <label class="inline"><input type="checkbox" id="dsTemp"> Temporary issue — the items will come back</label>
       <button class="btn alt" id="dsStartFree">Start despatch</button>
     </div>
     <div class="card">
-      <h2>Continue a despatch</h2>
+      <h2>Continue a despatch<span class="ar" lang="ar">متابعة تجهيز</span></h2>
       <label for="dsNo">Despatch no.</label><input id="dsNo" placeholder="DSP-00001">
       <button class="btn alt" id="dsOpen">Open</button>
     </div>
@@ -279,17 +335,23 @@ Titles like Serial No, Batch #, Unit No, Gross W., Net W., GSM, Width, Container
       <div class="strip" id="dsStrip"></div>
       <div id="dsFifo"></div>
       <div id="dsCount" style="font-size:26px;font-weight:700;margin-top:12px;color:var(--brand)"></div>
+      <button class="btn alt small" id="dsHandBtn">Can't scan? Pick from list · <span lang="ar" style="font-family:'IBM Plex Sans Arabic',sans-serif">اختيار من القائمة</span></button>
+      <div id="dsHand" hidden>
+        <label for="dsHandQ">Type batch, unit, serial or shelf to narrow the list</label>
+        <input id="dsHandQ" autocomplete="off">
+        <div id="dsHandList" class="list"></div>
+      </div>
     </div>
     <div class="card" style="margin-top:14px" id="dsRemainCard">
-      <h2>Still to pick</h2>
+      <h2>Still to pick<span class="ar" lang="ar">متبقي للتجهيز</span></h2>
       <div id="dsRemain" class="list"></div>
     </div>
     <div class="card">
-      <h2>In the despatch area</h2>
+      <h2>In the despatch area<span class="ar" lang="ar">في منطقة الشحن</span></h2>
       <div id="dsDone" class="list"></div>
       <div class="row">
-        <button class="btn alt" id="dsNote">Print delivery note</button>
-        <button class="btn main" id="dsPickup">Driver is here — load the truck</button>
+        <button class="btn alt" id="dsNote">Order is ready · print delivery note<span class="ar" lang="ar">طباعة إشعار التسليم</span></button>
+        <button class="btn main" id="dsPickup">Driver is here — load the truck<span class="ar" lang="ar">السائق وصل، تحميل الشاحنة</span></button>
       </div>
     </div>
   </div>
@@ -306,7 +368,7 @@ Titles like Serial No, Batch #, Unit No, Gross W., Net W., GSM, Width, Container
       <div id="puList" class="list"></div>
     </div>
     <div class="card">
-      <h2>Driver details</h2>
+      <h2>Driver details<span class="ar" lang="ar">بيانات السائق</span></h2>
       <div class="row">
         <div><label for="puDriver">Driver name</label><input id="puDriver"></div>
         <div><label for="puPlate">Plate no.</label><input id="puPlate"></div>
@@ -330,7 +392,7 @@ Titles like Serial No, Batch #, Unit No, Gross W., Net W., GSM, Width, Container
 <!-- LABELS -->
 <section id="tab-labels">
   <div class="card">
-    <h2>Print a batch of new labels</h2>
+    <h2>Print a batch of new labels<span class="ar" lang="ar">طباعة ملصقات جديدة</span></h2>
     <div class="row">
       <div><label for="lbCount">How many</label><input id="lbCount" type="number" min="1" max="500" value="24"></div>
       <div><label for="lbType">Type</label><select id="lbType"><option value="item">Item (SS-)</option><option value="pallet">Pallet (PL-)</option></select></div>
@@ -340,7 +402,7 @@ Titles like Serial No, Batch #, Unit No, Gross W., Net W., GSM, Width, Container
     <p class="muted">Numbers continue from the last batch and are never reused.</p>
   </div>
   <div class="card">
-    <h2>Reprint a lost label</h2>
+    <h2>Reprint a lost label<span class="ar" lang="ar">إعادة طباعة ملصق مفقود</span></h2>
     <label for="rpId">Barcode or serial of the item</label>
     <input id="rpId" placeholder="SS-000123 or serial no.">
     <button class="btn alt" id="rpGo">Reprint</button>
@@ -350,7 +412,7 @@ Titles like Serial No, Batch #, Unit No, Gross W., Net W., GSM, Width, Container
 <!-- CLIENTS -->
 <section id="tab-clients">
   <div class="card">
-    <h2>Clients</h2>
+    <h2>Clients and billing<span class="ar" lang="ar">العملاء والفواتير</span></h2>
     <div id="clList" class="list muted">Loading…</div>
   </div>
   <div class="card">
@@ -418,7 +480,7 @@ Titles like Serial No, Batch #, Unit No, Gross W., Net W., GSM, Width, Container
 <script>
 // ⚠ Must be the /exec link of your Apps Script deployment (Deploy > Manage deployments).
 const GAS_URL = "https://script.google.com/macros/s/AKfycbz1hy1Z5su7y3GJ5Lzy4AigAGUwRiwXIxrHn0WvO-OrXS4zD-sZPY6dzhZG5B5J4aCP/exec";
-const APP_VERSION = "2.5";
+const APP_VERSION = "3.0";
 
 const $ = id => document.getElementById(id);
 const esc = s => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
@@ -538,7 +600,35 @@ document.querySelectorAll("nav button").forEach(b=>b.onclick=()=>{
   if(b.dataset.tab==="receive" && $("rxWork").style.display==="none") loadOpenShipments();
   if(b.dataset.tab==="despatch" && $("dsWork").style.display==="none" && $("puWork").style.display==="none") loadRequests();
   if(b.dataset.tab==="clients") renderClients();
+  if(b.dataset.tab==="load") renderLoadTab();
+  if(b.dataset.tab==="receive" && $("rxWork").style.display==="none") receiveChoice("");
 });
+
+// ---------- home screen navigation ----------
+function showTab(t){ const b=document.querySelector('nav button[data-tab="'+t+'"]'); if(b) b.click(); window.scrollTo(0,0); }
+document.querySelectorAll("[data-go]").forEach(b=>b.onclick=()=>showTab(b.dataset.go));
+$("homeBtn").onclick=()=>showTab("home");
+
+function receiveChoice(g){
+  $("rxChoice").hidden=!!g; $("rxOther").hidden=!g;
+  document.querySelectorAll("#rxPick [data-grp]").forEach(c=>c.hidden=c.dataset.grp!==g);
+}
+document.querySelectorAll("[data-rg]").forEach(b=>b.onclick=()=>receiveChoice(b.dataset.rg));
+$("rxOther").onclick=()=>receiveChoice("");
+
+function renderLoadTab(){
+  const dsp=store.get("ssDsp");
+  $("ldLast").innerHTML=dsp&&dsp.despatchNo?`<button class="opt primary" id="ldLastBtn" style="margin-bottom:6px"><span class="ic">▣</span><span><b>${esc(dsp.despatchNo)}</b><span class="s">${esc(dsp.clientName||"")} · last order prepared on this device</span></span><span class="arr">›</span></button>`:"";
+  if($("ldLastBtn")) $("ldLastBtn").onclick=()=>loadTruck(dsp.despatchNo);
+}
+async function loadTruck(no){
+  if(!no) return toast("Type the despatch no.");
+  showTab("despatch");
+  await openDespatch(no);
+  if(DS && DS.despatchNo) $("dsPickup").onclick();
+}
+$("ldGo").onclick=()=>loadTruck($("ldNo").value.trim());
+$("ldNo").addEventListener("keydown",e=>{ if(e.key==="Enter") loadTruck($("ldNo").value.trim()); });
 
 // ---------- clients ----------
 async function loadClients(){
@@ -965,7 +1055,7 @@ async function openDespatch(no, quiet){
     $("dsPick").style.display="none"; $("puWork").style.display="none"; $("dsWork").style.display="block";
     $("dsTitle").textContent=DS.despatchNo;
     $("dsSub").textContent=DS.clientName+(DS.requestNo?" · request "+DS.requestNo:"")+(DS.temporary?" · TEMPORARY ISSUE":"");
-    $("dsFifo").innerHTML=""; $("dsStrip").className="strip"; $("dsStrip").textContent="";
+    $("dsFifo").innerHTML=""; $("dsStrip").className="strip"; $("dsStrip").textContent=""; $("dsHand").hidden=true;
     await refreshDespatch(note); $("dsScan").focus();
   }catch(e){ if(!quiet) toast(e.message); else store.del("ssDsp"); }
 }
@@ -1013,6 +1103,33 @@ $("dsScan").addEventListener("keydown",async e=>{
   }
   $("dsScan").focus();
 });
+// can't scan: pick the item from the client's stock list by hand
+let HAND=[];
+$("dsHandBtn").onclick=async()=>{
+  const box=$("dsHand"); box.hidden=!box.hidden; if(box.hidden) return;
+  $("dsHandList").innerHTML='<p class="muted">Loading stock…</p>'; $("dsHandQ").value="";
+  try{
+    const rows=await api("search",{q:DS.clientName,status:"In"});
+    HAND=rows.filter(r=>String(r.ClientCode).toUpperCase()===String(DS.clientCode).toUpperCase());
+    renderHand("");
+  }catch(e){ $("dsHandList").innerHTML='<p class="muted">'+esc(e.message)+'</p>'; }
+  $("dsHandQ").focus();
+};
+function renderHand(q){
+  q=q.toLowerCase();
+  const f=HAND.filter(r=>!q||[r.ItemID,r.SerialNo,r.BatchProject,r.UnitCode,r.Location,r.Description].join(" ").toLowerCase().includes(q));
+  $("dsHandList").innerHTML=f.slice(0,60).map((r,i)=>`<div class="item tap" data-h="${esc(r.ItemID||r.SerialNo)}"><span class="id">${esc(r.ItemID||r.SerialNo||"")}</span> ${esc(r.Description||"")}
+    <div class="muted">Shelf <strong>${esc(r.Location||"—")}</strong> · ${itemLine(r,r.ClientCode)}</div></div>`).join("")||'<p class="muted">Nothing in stock matches.</p>';
+  $("dsHandList").querySelectorAll("[data-h]").forEach(el=>el.onclick=async()=>{
+    const id=el.dataset.h;
+    try{ const r=await api("scanOut",{despatchNo:DS.despatchNo,itemId:id});
+      strip("dsStrip","ok","Picked by hand: "+id+" "+(r.item.Description||""));
+      HAND=HAND.filter(x=>(x.ItemID||x.SerialNo)!==id); renderHand($("dsHandQ").value.trim()); refreshDespatch();
+    }catch(err){ strip("dsStrip","bad",err.message); }
+  });
+}
+$("dsHandQ").addEventListener("input",()=>renderHand($("dsHandQ").value.trim()));
+
 $("dsBack").onclick=()=>{ DS=null; store.del("ssDsp"); $("dsWork").style.display="none"; $("dsPick").style.display="block"; loadRequests(); };
 
 $("dsNote").onclick=async()=>{
