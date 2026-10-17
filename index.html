@@ -13,6 +13,7 @@
     --muted:#6A7078; --line:#DADDD8; --ok:#1F8A4C; --bad:#C0392B; --warn:#B7791F;
   }
   *{box-sizing:border-box}
+  [hidden]{display:none !important}
   html,body{margin:0}
   body{font-family:"IBM Plex Sans",-apple-system,"Segoe UI",Roboto,sans-serif;background:var(--bg);color:var(--ink);
        font-variant-numeric:tabular-nums;font-size:16px;line-height:1.4}
@@ -105,6 +106,10 @@
   .linkbtn .ar{text-align:center}
   header .hb{display:flex;gap:6px}
   .btn .ar{color:inherit;opacity:.85;text-align:center;font-size:14px}
+  .steps{font-size:14px;color:var(--muted);margin:0 0 10px;font-variant-numeric:tabular-nums}
+  .steps b{color:var(--ink)}
+  .bigdone{text-align:center;padding:22px 14px}
+  .bigdone .tick{font-size:52px;line-height:1;color:var(--ok);font-weight:700}
 </style>
 <style id="pageStyle"></style>
 </head>
@@ -153,8 +158,11 @@
 <!-- LOAD THE TRUCK -->
 <section id="tab-load">
   <div class="card">
+    <div class="steps">1 Prepare &nbsp;›&nbsp; <b>2 Load</b> &nbsp;›&nbsp; 3 Driver</div>
     <h2>Which order is the truck for?<span class="ar" lang="ar">لأي طلبية هذه الشاحنة؟</span></h2>
+    <div id="ldList" class="opts muted">Loading orders that are ready…</div>
     <div id="ldLast"></div>
+    <p class="muted" style="margin:14px 0 0">Not in the list? Type the despatch no.</p>
     <label for="ldNo">Despatch no.</label>
     <input id="ldNo" placeholder="DSP-00042" autocomplete="off">
     <button class="btn main" id="ldGo">Load this order<span class="ar" lang="ar">تحميل هذه الطلبية</span></button>
@@ -305,32 +313,30 @@ Titles like Serial No, Batch #, Unit No, Gross W., Net W., GSM, Width, Container
 <!-- DESPATCH -->
 <section id="tab-despatch">
   <div id="dsPick">
+    <div class="steps"><b>1 Prepare</b> &nbsp;›&nbsp; 2 Load &nbsp;›&nbsp; 3 Driver</div>
     <div class="card">
-      <h2>New requests to despatch<span class="ar" lang="ar">تجهيز طلبية إلى الشحن</span></h2>
-      <div id="reqList" class="list muted">Loading…</div>
+      <h2>Requests from clients<span class="ar" lang="ar">طلبات العملاء</span></h2>
+      <div id="reqList" class="opts muted">Loading…</div>
     </div>
     <div class="card">
-      <h2>Despatch without a request<span class="ar" lang="ar">تجهيز بدون طلب</span></h2>
-      <label for="dsClient">Client</label><select id="dsClient"></select>
-      <label class="inline"><input type="checkbox" id="dsTemp"> Temporary issue — the items will come back</label>
-      <button class="btn alt" id="dsStartFree">Start despatch</button>
+      <h2>Or choose the client<span class="ar" lang="ar">أو اختر العميل</span></h2>
+      <p class="muted" style="margin-top:0">No request, or it was phoned in.</p>
+      <div id="dsClientBtns" class="opts"></div>
+      <label class="inline"><input type="checkbox" id="dsTemp"> Temporary issue — the items will come back · <span lang="ar" style="font-family:'IBM Plex Sans Arabic',sans-serif">مواد مصروفة مؤقتاً</span></label>
     </div>
-    <div class="card">
-      <h2>Continue a despatch<span class="ar" lang="ar">متابعة تجهيز</span></h2>
-      <label for="dsNo">Despatch no.</label><input id="dsNo" placeholder="DSP-00001">
-      <button class="btn alt" id="dsOpen">Open</button>
-    </div>
+    <div hidden><select id="dsClient"></select><button id="dsStartFree"></button><input id="dsNo"><button id="dsOpen"></button></div>
   </div>
 
   <div id="dsWork" style="display:none">
+    <div class="steps"><b>1 Prepare</b> &nbsp;›&nbsp; 2 Load &nbsp;›&nbsp; 3 Driver</div>
     <div class="card">
       <div class="row" style="align-items:center">
         <div><h2 id="dsTitle" style="margin:0"></h2><div class="muted" id="dsSub"></div></div>
-        <div style="flex:0 0 auto"><button class="btn alt small" id="dsBack">All despatches</button></div>
+        <div style="flex:0 0 auto"><button class="btn alt small" id="dsBack">‹ Back</button></div>
       </div>
     </div>
     <div class="scanbox">
-      <div class="prompt">Scan each item going to the despatch area</div>
+      <div class="prompt">Scan as you pick<span class="ar" lang="ar">امسح أثناء التجهيز</span></div>
       <input id="dsScan" autocomplete="off" inputmode="none" aria-label="Scan item out">
       <div class="strip" id="dsStrip"></div>
       <div id="dsFifo"></div>
@@ -349,18 +355,31 @@ Titles like Serial No, Batch #, Unit No, Gross W., Net W., GSM, Width, Container
     <div class="card">
       <h2>In the despatch area<span class="ar" lang="ar">في منطقة الشحن</span></h2>
       <div id="dsDone" class="list"></div>
-      <div class="row">
-        <button class="btn alt" id="dsNote">Order is ready · print delivery note<span class="ar" lang="ar">طباعة إشعار التسليم</span></button>
-        <button class="btn main" id="dsPickup">Driver is here — load the truck<span class="ar" lang="ar">السائق وصل، تحميل الشاحنة</span></button>
-      </div>
+      <button class="btn main" id="dsReadyBtn">Order is ready<span class="ar" lang="ar">الطلبية جاهزة</span></button>
+      <button class="btn danger" id="dsCancel" style="width:100%">Cancel this order<span class="ar" lang="ar">إلغاء هذه الطلبية</span></button>
+      <p class="muted">Cancelling puts everything already scanned back on its shelf.</p>
     </div>
   </div>
 
+  <div id="dsReady" style="display:none">
+    <div class="card bigdone">
+      <div class="tick">✓</div>
+      <h2 id="rdTitle" style="font-size:22px;margin:8px 0 4px"></h2>
+      <span class="ar" lang="ar" style="text-align:center">الطلبية جاهزة</span>
+      <p class="muted" id="rdSub"></p>
+    </div>
+    <button class="btn alt" id="dsNote" style="width:100%">Print delivery note<span class="ar" lang="ar">طباعة إشعار التسليم</span></button>
+    <button id="dsPickup" hidden></button>
+    <button class="btn alt" id="rdHome" style="width:100%">Back to start<span class="ar" lang="ar">العودة إلى البداية</span></button>
+    <button class="btn alt small" id="rdBack">‹ Back to picking</button>
+  </div>
+
   <div id="puWork" style="display:none">
+    <div class="steps">1 Prepare &nbsp;›&nbsp; <b>2 Load</b> &nbsp;›&nbsp; <b>3 Driver</b></div>
     <div class="card">
       <h2 id="puTitle">Pickup</h2>
       <div class="scanbox">
-        <div class="prompt">Scan each item as it goes on the truck</div>
+        <div class="prompt">Check each item onto the truck<span class="ar" lang="ar">امسح كل قطعة عند التحميل</span></div>
         <input id="puScan" autocomplete="off" inputmode="none" aria-label="Scan onto truck">
         <div class="strip" id="puStrip"></div>
       </div>
@@ -378,12 +397,12 @@ Titles like Serial No, Batch #, Unit No, Gross W., Net W., GSM, Width, Container
         <div><label for="puVehicle">Vehicle type</label><select id="puVehicle"></select></div>
       </div>
       <p class="muted">The collector can be anyone the client sends — the items stay under the client's name.</p>
-      <label>Driver signs here</label>
+      <label>Driver signs here · <span lang="ar" style="font-family:'IBM Plex Sans Arabic',sans-serif">توقيع السائق</span></label>
       <canvas id="sig"></canvas>
       <button class="btn alt small" id="sigClear">Clear signature</button>
       <label for="puPhoto">Or: photo of the signed paper note</label>
       <input id="puPhoto" type="file" accept="image/*" capture="environment">
-      <button class="btn main" id="puGo">Confirm collected and issue GIV</button>
+      <button class="btn main" id="puGo">Handed over · issue GIV<span class="ar" lang="ar">تم التسليم</span></button>
       <button class="btn alt" id="puBack">Back</button>
     </div>
   </div>
@@ -616,9 +635,24 @@ function receiveChoice(g){
 document.querySelectorAll("[data-rg]").forEach(b=>b.onclick=()=>receiveChoice(b.dataset.rg));
 $("rxOther").onclick=()=>receiveChoice("");
 
-function renderLoadTab(){
+async function renderLoadTab(){
+  $("ldList").innerHTML="Loading orders that are ready…";
+  try{
+    const rows=await api("search",{q:"",status:"Despatched"});
+    const groups={};
+    rows.forEach(r=>{ let no=""; for(const k in r){ const m=String(r[k]==null?"":r[k]).match(/DSP-\d+/i); if(m){ no=m[0].toUpperCase(); break; } }
+      if(!no) return; const g=groups[no]=groups[no]||{client:r.ClientName,n:0,kg:0}; g.n++; g.kg+=parseFloat(r.Weight_kg)||0; });
+    const keys=Object.keys(groups).sort();
+    $("ldList").innerHTML=keys.length?keys.map(k=>{const g=groups[k];
+      return `<button class="opt primary" data-ld="${esc(k)}"><span class="ic">▣</span><span><b>${esc(k)}</b><span class="s">${esc(g.client||"")} · ${g.n} item(s)${g.kg?" · "+(g.kg/1000).toFixed(3)+" t":""}</span></span><span class="arr">›</span></button>`}).join("")
+      :'<p class="muted">No orders waiting for a truck.</p>';
+    $("ldList").querySelectorAll("[data-ld]").forEach(b=>b.onclick=()=>loadTruck(b.dataset.ld));
+  }catch(e){ $("ldList").innerHTML='<p class="muted">'+esc(e.message)+'</p>'; }
+  renderLastLoad();
+}
+function renderLastLoad(){
   const dsp=store.get("ssDsp");
-  $("ldLast").innerHTML=dsp&&dsp.despatchNo?`<button class="opt primary" id="ldLastBtn" style="margin-bottom:6px"><span class="ic">▣</span><span><b>${esc(dsp.despatchNo)}</b><span class="s">${esc(dsp.clientName||"")} · last order prepared on this device</span></span><span class="arr">›</span></button>`:"";
+  $("ldLast").innerHTML=dsp&&dsp.despatchNo?`<button class="opt" id="ldLastBtn" style="margin-bottom:6px"><span class="ic">▣</span><span><b>${esc(dsp.despatchNo)}</b><span class="s">${esc(dsp.clientName||"")} · last order prepared on this device</span></span><span class="arr">›</span></button>`:"";
   if($("ldLastBtn")) $("ldLastBtn").onclick=()=>loadTruck(dsp.despatchNo);
 }
 async function loadTruck(no){
@@ -636,6 +670,8 @@ async function loadClients(){
   const opts = CLIENTS.filter(c=>c.Active!=="No").map(c=>`<option value="${esc(c.ClientCode)}">${esc(c.ClientName)} (${esc(c.ClientCode)})</option>`).join("")
              || "<option value=''>Add a client first</option>";
   ["nsClient","dsClient","nlClient","rtClient","bsClient"].forEach(id=>$(id).innerHTML=opts);
+  $("dsClientBtns").innerHTML=CLIENTS.filter(c=>c.Active!=="No").map(c=>`<button class="opt" data-dc="${esc(c.ClientCode)}"><span class="ic">${esc(String(c.ClientName||c.ClientCode).slice(0,2).toUpperCase())}</span><span><b>${esc(c.ClientName)}</b><span class="s">${esc(c.ClientCode)}</span></span><span class="arr">›</span></button>`).join("")||'<p class="muted">Add a client first.</p>';
+  $("dsClientBtns").querySelectorAll("[data-dc]").forEach(b=>b.onclick=()=>{ $("dsClient").value=b.dataset.dc; $("dsStartFree").onclick(); });
   renderClients();
 }
 async function loadVehicles(){
@@ -1017,8 +1053,8 @@ async function loadRequests(){
       return `<div class="item"><span class="id">${esc(k)}</span><span class="tag">${g.length} line(s)</span>
         <div class="muted">${esc(g[0].ClientName)} · ${fmtDate(g[0].Timestamp)} ${g[0].RequestedBy?"· by "+esc(g[0].RequestedBy):""}</div>
         ${g.map(reqLine).join("")}
-        <button class="btn main small" data-req="${esc(k)}" data-client="${esc(g[0].ClientCode)}">Start despatch</button></div>`;
-    }).join(""):"No requests waiting.";
+        <button class="btn main small" data-req="${esc(k)}" data-client="${esc(g[0].ClientCode)}">Start preparing · <span lang="ar" style="font-family:'IBM Plex Sans Arabic',sans-serif">ابدأ التجهيز</span></button></div>`;
+    }).join(""):'<p class="muted">No requests waiting.</p>';
     $("reqList").querySelectorAll("[data-req]").forEach(b=>b.onclick=()=>startDespatch(b.dataset.client,b.dataset.req,false));
   }catch(e){ $("reqList").textContent=e.message; }
 }
@@ -1052,7 +1088,7 @@ async function openDespatch(no, quiet){
     DS={despatchNo:note.despatch.DespatchNo,clientCode:note.despatch.ClientCode,clientName:note.despatch.ClientName,
         requestNo:note.despatch.RequestNo,temporary:note.despatch.Temporary==="Yes"};
     store.set("ssDsp",DS);
-    $("dsPick").style.display="none"; $("puWork").style.display="none"; $("dsWork").style.display="block";
+    $("dsPick").style.display="none"; $("puWork").style.display="none"; $("dsReady").style.display="none"; $("dsWork").style.display="block";
     $("dsTitle").textContent=DS.despatchNo;
     $("dsSub").textContent=DS.clientName+(DS.requestNo?" · request "+DS.requestNo:"")+(DS.temporary?" · TEMPORARY ISSUE":"");
     $("dsFifo").innerHTML=""; $("dsStrip").className="strip"; $("dsStrip").textContent=""; $("dsHand").hidden=true;
@@ -1152,12 +1188,38 @@ $("dsNote").onclick=async()=>{
   }catch(e){ toast(e.message); }
 };
 
+// ---------- cancel an order being prepared ----------
+$("dsCancel").onclick=async()=>{
+  await refreshDespatch();
+  const n=(DS.items||[]).length;
+  if(!confirm("Cancel "+DS.despatchNo+"?"+(n?"\n\n"+n+" scanned item(s) will go back to stock.":""))) return;
+  $("dsCancel").disabled=true;
+  let failed=0;
+  for(const i of (DS.items||[])){ try{ await api("unscanOut",{despatchNo:DS.despatchNo,itemId:i.ItemID||i.SerialNo}); }catch(e){ failed++; } }
+  $("dsCancel").disabled=false;
+  if(failed){ toast(failed+" item(s) could not be put back. Try again.", true); refreshDespatch(); return; }
+  toast(DS.despatchNo+" cancelled"+(n?" · "+n+" item(s) back in stock":""));
+  DS=null; store.del("ssDsp"); $("dsWork").style.display="none"; $("dsPick").style.display="block"; loadRequests();
+};
+
+// ---------- order is ready ----------
+$("dsReadyBtn").onclick=async()=>{
+  await refreshDespatch();
+  if(!DS.items||!DS.items.length) return toast("Scan or pick at least one item first");
+  const kg=DS.items.reduce((s,i)=>s+(parseFloat(i.Weight_kg)||0),0);
+  $("rdTitle").textContent=DS.despatchNo+" is ready";
+  $("rdSub").innerHTML=esc(DS.items.length+" item(s)"+(kg?" · "+(kg/1000).toFixed(3)+" t":"")+" · "+DS.clientName)+"<br>Waiting at the loading bay. When the truck comes, choose “Load the truck”.";
+  $("dsWork").style.display="none"; $("dsReady").style.display="block"; window.scrollTo(0,0);
+};
+$("rdBack").onclick=()=>{ $("dsReady").style.display="none"; $("dsWork").style.display="block"; };
+$("rdHome").onclick=()=>{ DS=null; $("dsReady").style.display="none"; $("dsPick").style.display="block"; showTab("home"); };
+
 // ---------- pickup: load each item, then sign ----------
 $("dsPickup").onclick=async()=>{
   await refreshDespatch();
   if(!DS.items||!DS.items.length) return toast("Nothing is in the despatch area for this despatch yet");
   LOADED={};
-  $("dsWork").style.display="none"; $("puWork").style.display="block";
+  $("dsWork").style.display="none"; $("dsReady").style.display="none"; $("puWork").style.display="block"; window.scrollTo(0,0);
   $("puTitle").textContent="Pickup — "+DS.despatchNo+" — "+DS.clientName;
   renderLoad(); sizeSig(); $("puScan").focus();
 };
@@ -1178,7 +1240,7 @@ $("puScan").addEventListener("keydown",e=>{
   if(LOADED[id]){ strip("puStrip","warn",id+" is already on the truck"); beep(false); return; }
   LOADED[id]=true; strip("puStrip","ok","On the truck: "+id); renderLoad();
 });
-$("puBack").onclick=()=>{ $("puWork").style.display="none"; $("dsWork").style.display="block"; };
+$("puBack").onclick=()=>{ $("puWork").style.display="none"; $("dsReady").style.display="block"; };
 
 const sig=$("sig"); let sctx, drawing=false, inked=false;
 function sizeSig(){ const r=sig.getBoundingClientRect(); sig.width=r.width*2; sig.height=r.height*2; sctx=sig.getContext("2d");
@@ -1213,7 +1275,7 @@ $("puGo").onclick=async()=>{
       vehicleType:$("puVehicle").value,imageDataUrl,confirmedIds:Object.keys(LOADED).filter(k=>LOADED[k])});
     alert("GIV "+r.givNo+" issued — "+DS.despatchNo+" collected.");
     ["puDriver","puPlate","puId"].forEach(i=>$(i).value=""); $("puPhoto").value=""; $("puVehicle").value="";
-    DS=null; LOADED={}; store.del("ssDsp"); $("puWork").style.display="none"; $("dsPick").style.display="block"; loadRequests();
+    DS=null; LOADED={}; store.del("ssDsp"); $("puWork").style.display="none"; $("dsPick").style.display="block"; showTab("home");
   }catch(e){ alert(e.message); }
   $("puGo").disabled=false;
 };
