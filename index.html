@@ -118,9 +118,9 @@
 <div id="login" class="card" style="display:none">
   <h2>Staff sign-in</h2>
   <label for="lgName">Your name</label>
-  <input id="lgName" placeholder="e.g. Nancy" autocomplete="name">
-  <label for="lgKey">Staff key</label>
-  <input id="lgKey" type="password" autocomplete="off">
+  <input id="lgName" placeholder="e.g. Tina" autocomplete="name">
+  <label for="lgKey">PIN · <span lang="ar" style="font-family:'IBM Plex Sans Arabic',sans-serif">الرقم السري</span></label>
+  <input id="lgKey" type="password" inputmode="numeric" autocomplete="off">
   <button class="btn main" id="lgBtn">Sign in</button>
   <p class="muted" id="lgMsg"></p>
 </div>
@@ -508,7 +508,7 @@ Titles like Serial No, Batch #, Unit No, Gross W., Net W., GSM, Width, Container
 <script>
 // ⚠ Must be the /exec link of your Apps Script deployment (Deploy > Manage deployments).
 const GAS_URL = "https://script.google.com/macros/s/AKfycbz1hy1Z5su7y3GJ5Lzy4AigAGUwRiwXIxrHn0WvO-OrXS4zD-sZPY6dzhZG5B5J4aCP/exec";
-const APP_VERSION = "3.0";
+const APP_VERSION = "3.1";
 
 const $ = id => document.getElementById(id);
 const esc = s => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
@@ -601,10 +601,10 @@ function itemLine(r, code){
 // ---------- sign in ----------
 async function tryLogin(){
   const name=$("lgName").value.trim(), key=$("lgKey").value.trim();
-  if(!name||!key){ $("lgMsg").textContent="Enter your name and the staff key."; return; }
+  if(!name||!key){ $("lgMsg").textContent="Enter your name and your PIN."; return; }
   S={user:name,key}; $("lgMsg").textContent="Checking…";
   try{ const p=await api("staffPing"); store.set("ssStaff",S); startApp(p); }
-  catch(e){ $("lgMsg").textContent=e.message==="Not authorised"?"That staff key is not right.":e.message; }
+  catch(e){ $("lgMsg").textContent=e.message==="Not authorised"?"That name and PIN don't match. Check the spelling of your name.":e.message; }
 }
 $("lgBtn").onclick=tryLogin;
 $("lgKey").addEventListener("keydown",e=>{ if(e.key==="Enter") tryLogin(); });
@@ -613,7 +613,10 @@ $("logout").onclick=()=>{ store.del("ssStaff"); location.reload(); };
 async function startApp(ping){
   $("login").style.display="none"; $("app").style.display="block";
   // shows both versions, so you can see at a glance whether the new Apps Script deployment is live
-  $("who").textContent="Signed in as "+S.user+" · app "+APP_VERSION+" · server "+((ping&&ping.version)||"?");
+  if(ping&&ping.name) S.user=ping.name;
+  S.role=(ping&&ping.role)||"Manager";
+  $("who").textContent="Signed in as "+S.user+(S.role==="Warehouse"?" (warehouse)":"")+" · app "+APP_VERSION+" · server "+((ping&&ping.version)||"?");
+  document.querySelectorAll('[data-go="clients"]').forEach(b=>b.hidden=S.role==="Warehouse");
   const now=new Date(); $("bsMonth").value=now.getFullYear()+"-"+String(now.getMonth()+1).padStart(2,"0");
   await loadClients();
   loadVehicles();
@@ -648,9 +651,11 @@ $("rxOther").onclick=()=>receiveChoice("");
 async function renderLoadTab(){
   $("ldList").innerHTML="Loading orders that are ready…";
   try{
-    const rows=await api("search",{q:"",status:"Despatched"});
     const groups={};
-    rows.forEach(r=>{ let no=""; for(const k in r){ const m=String(r[k]==null?"":r[k]).match(/DSP-\d+/i); if(m){ no=m[0].toUpperCase(); break; } }
+    let ready=null;
+    try{ ready=await api("listReadyDespatches"); }catch(e){ if(!/Unknown action/i.test(e.message)) throw e; }
+    if(ready) ready.forEach(d=>{ groups[d.despatchNo]={client:d.clientName,n:d.items,kg:(d.tons||0)*1000}; });
+    else (await api("search",{q:"",status:"Despatched"})).forEach(r=>{ let no=""; for(const k in r){ const m=String(r[k]==null?"":r[k]).match(/DSP-\d+/i); if(m){ no=m[0].toUpperCase(); break; } }
       if(!no) return; const g=groups[no]=groups[no]||{client:r.ClientName,n:0,kg:0}; g.n++; g.kg+=parseFloat(r.Weight_kg)||0; });
     const keys=Object.keys(groups).sort();
     $("ldList").innerHTML=keys.length?keys.map(k=>{const g=groups[k];
@@ -1075,9 +1080,20 @@ async function loadRequests(){
       return `<div class="item"><span class="id">${esc(k)}</span><span class="tag">${g.length} line(s)</span>
         <div class="muted">${esc(g[0].ClientName)} · ${fmtDate(g[0].Timestamp)} ${g[0].RequestedBy?"· by "+esc(g[0].RequestedBy):""}</div>
         ${g.map(reqLine).join("")}
-        <button class="btn main small" data-req="${esc(k)}" data-client="${esc(g[0].ClientCode)}">Start preparing · <span lang="ar" style="font-family:'IBM Plex Sans Arabic',sans-serif">ابدأ التجهيز</span></button></div>`;
+        <button class="btn main small" data-req="${esc(k)}" data-client="${esc(g[0].ClientCode)}">Start preparing · <span lang="ar" style="font-family:'IBM Plex Sans Arabic',sans-serif">ابدأ التجهيز</span></button>
+        <button class="btn danger small" data-close="${esc(k)}">Close request · <span lang="ar" style="font-family:'IBM Plex Sans Arabic',sans-serif">إغلاق الطلب</span></button>
+        <div data-why="${esc(k)}" hidden style="margin-top:8px">
+          <div class="muted">Why are you closing it? · <span lang="ar" style="font-family:'IBM Plex Sans Arabic',sans-serif">سبب الإغلاق</span></div>
+          ${["Client cancelled","Didn't fit the truck, client won't ask again","Not enough in stock","Already sent","Other"].map(x=>`<button class="btn alt small" data-reason="${esc(x)}" data-rq="${esc(k)}">${esc(x)}</button>`).join(" ")}
+        </div></div>`;
     }).join(""):'<p class="muted">No requests waiting.</p>';
     $("reqList").querySelectorAll("[data-req]").forEach(b=>b.onclick=()=>startDespatch(b.dataset.client,b.dataset.req,false));
+    $("reqList").querySelectorAll("[data-close]").forEach(b=>b.onclick=()=>{ const w=$("reqList").querySelector('[data-why="'+b.dataset.close+'"]'); w.hidden=!w.hidden; });
+    $("reqList").querySelectorAll("[data-reason]").forEach(b=>b.onclick=async()=>{
+      b.disabled=true;
+      try{ await api("closeRequest",{requestNo:b.dataset.rq,reason:b.dataset.reason}); toast("Request "+b.dataset.rq+" closed · "+b.dataset.reason, true); loadRequests(); dpChoice("req"); }
+      catch(e){ b.disabled=false; toast(/Unknown action/i.test(e.message)?"Closing requests needs the new Code.gs (version 2.6) deployed.":e.message, true); }
+    });
   }catch(e){ $("reqList").textContent=e.message; }
 }
 function reqLine(i){
@@ -1228,8 +1244,20 @@ $("dsNote").onclick=async()=>{
 };
 
 // ---------- cancel an order being prepared ----------
+async function closeAfterCancel(rq){
+  if(!rq || !confirm("Also close request "+rq+"?\n\nOK = close it, the client won't get these items.\nCancel = keep the request open for later.")) return false;
+  try{ await api("closeRequest",{requestNo:rq,reason:"Order cancelled"}); return true; }
+  catch(e){ toast(/Unknown action/i.test(e.message)?"Closing requests needs the new Code.gs (version 2.6) deployed.":e.message, true); return false; }
+}
 $("dsCancel").onclick=async()=>{
-  if(DS && DS.draft){ DS=null; $("dsWork").style.display="none"; $("dsPick").style.display="block"; loadRequests(); return; }
+  if(DS && DS.draft){
+    const rq=DS.requestNo;
+    DS=null; $("dsWork").style.display="none"; $("dsPick").style.display="block";
+    const closed=await closeAfterCancel(rq);
+    loadRequests();
+    toast("Order cancelled. Nothing was scanned, so nothing changed."+(rq?(closed?"\nRequest "+rq+" closed.":"\nRequest "+rq+" is still open."):""), true);
+    return;
+  }
   await refreshDespatch();
   const n=(DS.items||[]).length;
   if(!confirm("Cancel "+DS.despatchNo+"?"+(n?"\n\n"+n+" scanned item(s) will go back to stock.":""))) return;
@@ -1238,7 +1266,8 @@ $("dsCancel").onclick=async()=>{
   for(const i of (DS.items||[])){ try{ await api("unscanOut",{despatchNo:DS.despatchNo,itemId:i.ItemID||i.SerialNo}); }catch(e){ failed++; } }
   $("dsCancel").disabled=false;
   if(failed){ toast(failed+" item(s) could not be put back. Try again.", true); refreshDespatch(); return; }
-  toast(DS.despatchNo+" cancelled"+(n?" · "+n+" item(s) back in stock":""));
+  const rq=DS.requestNo, closed=await closeAfterCancel(rq);
+  toast(DS.despatchNo+" cancelled"+(n?" · "+n+" item(s) back in stock":"")+(rq?(closed?"\nRequest "+rq+" closed.":"\nRequest "+rq+" is still open."):""), true);
   DS=null; store.del("ssDsp"); $("dsWork").style.display="none"; $("dsPick").style.display="block"; loadRequests();
 };
 
