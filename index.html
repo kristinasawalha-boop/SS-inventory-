@@ -314,12 +314,20 @@ Titles like Serial No, Batch #, Unit No, Gross W., Net W., GSM, Width, Container
 <section id="tab-despatch">
   <div id="dsPick">
     <div class="steps"><b>1 Prepare</b> &nbsp;›&nbsp; 2 Load &nbsp;›&nbsp; 3 Driver</div>
-    <div class="card">
+    <div class="card" id="dpChoice">
+      <h2>What are you preparing?<span class="ar" lang="ar">ماذا تجهّز؟</span></h2>
+      <div class="opts">
+        <button class="opt primary" data-dp="req"><span class="ic" id="dpReqCount">…</span><span><b>A client request</b><span class="ar" lang="ar">طلب من عميل</span><span class="s">The client sent a request for items</span></span><span class="arr">›</span></button>
+        <button class="opt" data-dp="own"><span class="ic">+</span><span><b>My own choice</b><span class="ar" lang="ar">اختياري الخاص</span><span class="s">No request, or it was phoned in</span></span><span class="arr">›</span></button>
+      </div>
+    </div>
+    <button class="btn alt small" id="dpBack" hidden>‹ Back · <span lang="ar" style="font-family:'IBM Plex Sans Arabic',sans-serif">رجوع</span></button>
+    <div class="card" data-dpg="req" hidden>
       <h2>Requests from clients<span class="ar" lang="ar">طلبات العملاء</span></h2>
       <div id="reqList" class="opts muted">Loading…</div>
     </div>
-    <div class="card">
-      <h2>Or choose the client<span class="ar" lang="ar">أو اختر العميل</span></h2>
+    <div class="card" data-dpg="own" hidden>
+      <h2>Which client?<span class="ar" lang="ar">أي عميل؟</span></h2>
       <p class="muted" style="margin-top:0">No request, or it was phoned in.</p>
       <div id="dsClientBtns" class="opts"></div>
       <label class="inline"><input type="checkbox" id="dsTemp"> Temporary issue — the items will come back · <span lang="ar" style="font-family:'IBM Plex Sans Arabic',sans-serif">مواد مصروفة مؤقتاً</span></label>
@@ -1043,11 +1051,20 @@ $("rpGo").onclick=()=>{ const v=$("rpId").value.trim(); if(v) reprint(v); };
 
 // ---------- despatch ----------
 let DS=null, LOADED={};
+function dpChoice(g){
+  $("dpChoice").hidden=!!g; $("dpBack").hidden=!g;
+  document.querySelectorAll("#dsPick [data-dpg]").forEach(c=>c.hidden=c.dataset.dpg!==g);
+  window.scrollTo(0,0);
+}
+document.querySelectorAll("[data-dp]").forEach(b=>b.onclick=()=>dpChoice(b.dataset.dp));
+$("dpBack").onclick=()=>dpChoice("");
 async function loadRequests(){
+  dpChoice(""); $("dpReqCount").textContent="…";
   try{
     const rows=await api("getRequests",{status:"Pending"});
     const groups={}; rows.forEach(r=>{ (groups[r.RequestNo]=groups[r.RequestNo]||[]).push(r); });
     const keys=Object.keys(groups);
+    $("dpReqCount").textContent=keys.length;
     $("reqList").innerHTML=keys.length?keys.map(k=>{
       const g=groups[k];
       return `<div class="item"><span class="id">${esc(k)}</span><span class="tag">${g.length} line(s)</span>
