@@ -318,6 +318,7 @@ Titles like Serial No, Batch #, Unit No, Gross W., Net W., GSM, Width, Container
       <h2>What are you preparing?<span class="ar" lang="ar">ماذا تجهّز؟</span></h2>
       <div class="opts">
         <button class="opt primary" data-dp="req"><span class="ic" id="dpReqCount">…</span><span><b>A client request</b><span class="ar" lang="ar">طلب من عميل</span><span class="s">The client sent a request for items</span></span><span class="arr">›</span></button>
+        <div id="dpCont"></div>
         <button class="opt" data-dp="own"><span class="ic">+</span><span><b>My own choice</b><span class="ar" lang="ar">اختياري الخاص</span><span class="s">No request, or it was phoned in</span></span><span class="arr">›</span></button>
       </div>
     </div>
@@ -617,7 +618,6 @@ async function startApp(ping){
   await loadClients();
   loadVehicles();
   loadOpenShipments();
-  const dsp=store.get("ssDsp"); if(dsp) openDespatch(dsp.despatchNo, true);
 }
 
 // ---------- tabs ----------
@@ -625,7 +625,9 @@ document.querySelectorAll("nav button").forEach(b=>b.onclick=()=>{
   document.querySelectorAll("nav button").forEach(x=>x.classList.toggle("on",x===b));
   document.querySelectorAll("section").forEach(s=>s.classList.toggle("on",s.id==="tab-"+b.dataset.tab));
   if(b.dataset.tab==="receive" && $("rxWork").style.display==="none") loadOpenShipments();
-  if(b.dataset.tab==="despatch" && $("dsWork").style.display==="none" && $("puWork").style.display==="none") loadRequests();
+  if(b.dataset.tab==="despatch"){
+    ["dsWork","dsReady","puWork"].forEach(id=>$(id).style.display="none"); $("dsPick").style.display="block"; loadRequests();
+  }
   if(b.dataset.tab==="clients") renderClients();
   if(b.dataset.tab==="load") renderLoadTab();
   if(b.dataset.tab==="receive" && $("rxWork").style.display==="none") receiveChoice("");
@@ -1060,6 +1062,9 @@ document.querySelectorAll("[data-dp]").forEach(b=>b.onclick=()=>dpChoice(b.datas
 $("dpBack").onclick=()=>dpChoice("");
 async function loadRequests(){
   dpChoice(""); $("dpReqCount").textContent="…";
+  const last=store.get("ssDsp");
+  $("dpCont").innerHTML=last&&last.despatchNo?`<button class="opt" id="dpContBtn"><span class="ic">⟳</span><span><b>Continue ${esc(last.despatchNo)}</b><span class="ar" lang="ar">متابعة طلبية لم تكتمل</span><span class="s">${esc(last.clientName||"")} · not finished on this device</span></span><span class="arr">›</span></button>`:"";
+  if($("dpContBtn")) $("dpContBtn").onclick=()=>openDespatch(last.despatchNo);
   try{
     const rows=await api("getRequests",{status:"Pending"});
     const groups={}; rows.forEach(r=>{ (groups[r.RequestNo]=groups[r.RequestNo]||[]).push(r); });
