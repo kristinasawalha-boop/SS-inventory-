@@ -1091,9 +1091,24 @@ function reqLine(i){
     <span class="tag ${short?"bad":""}">${esc(i.Available||0)} in stock</span>
     ${sug?`<div style="font-size:16px;color:var(--ink);margin-top:4px">Go to (oldest first): ${sug}</div>`:""}</div>`;
 }
+// Choosing a client or request only opens the scan screen. The despatch no. is created on the first scan or pick.
 async function startDespatch(clientCode, requestNo, temporary){
-  try{ const r=await api("startDespatch",{clientCode,requestNo:requestNo||"",temporary:!!temporary}); openDespatch(r.despatchNo); }
-  catch(e){ toast(e.message); }
+  const c=clientOf(clientCode);
+  DS={draft:true,despatchNo:"",clientCode,clientName:c.ClientName||clientCode,requestNo:requestNo||"",temporary:!!temporary,items:[]};
+  $("dsPick").style.display="none"; $("puWork").style.display="none"; $("dsReady").style.display="none"; $("dsWork").style.display="block";
+  $("dsTitle").textContent="New order · "+DS.clientName;
+  $("dsSub").textContent=(DS.requestNo?"Request "+DS.requestNo+" · ":"")+(DS.temporary?"TEMPORARY ISSUE · ":"")+"order no. is given when you scan the first item";
+  $("dsFifo").innerHTML=""; $("dsStrip").className="strip"; $("dsStrip").textContent=""; $("dsHand").hidden=true;
+  window.scrollTo(0,0);
+  try{ await refreshDespatch(); }catch(e){ toast(e.message); }
+  $("dsScan").focus();
+}
+async function ensureDespatch(){
+  if(!DS || !DS.draft) return;
+  const r=await api("startDespatch",{clientCode:DS.clientCode,requestNo:DS.requestNo,temporary:DS.temporary});
+  DS.despatchNo=r.despatchNo; DS.draft=false; store.set("ssDsp",DS);
+  $("dsTitle").textContent=DS.despatchNo;
+  $("dsSub").textContent=DS.clientName+(DS.requestNo?" · request "+DS.requestNo:"")+(DS.temporary?" · TEMPORARY ISSUE":"");
 }
 $("dsStartFree").onclick=async()=>{
   if(!$("dsClient").value) return;
@@ -1118,6 +1133,7 @@ async function openDespatch(no, quiet){
   }catch(e){ if(!quiet) toast(e.message); else store.del("ssDsp"); }
 }
 async function refreshDespatch(note){
+  if(DS.draft) note={items:[]};
   note=note||await api("getDespatchNote",{despatchNo:DS.despatchNo});
   const items=note.items.filter(i=>i.Status==="Despatched");
   DS.items=items;
@@ -1143,6 +1159,7 @@ $("dsScan").addEventListener("keydown",async e=>{
   const v=$("dsScan").value.trim(); $("dsScan").value=""; if(!v) return;
   $("dsFifo").innerHTML="";
   try{
+    await ensureDespatch();
     const r=await api("scanOut",{despatchNo:DS.despatchNo,itemId:v});
     const id=r.item.ItemID||r.item.SerialNo;
     if(r.fifoWarning){
@@ -1180,7 +1197,7 @@ function renderHand(q){
     <div class="muted">Shelf <strong>${esc(r.Location||"—")}</strong> · ${itemLine(r,r.ClientCode)}</div></div>`).join("")||'<p class="muted">Nothing in stock matches.</p>';
   $("dsHandList").querySelectorAll("[data-h]").forEach(el=>el.onclick=async()=>{
     const id=el.dataset.h;
-    try{ const r=await api("scanOut",{despatchNo:DS.despatchNo,itemId:id});
+    try{ await ensureDespatch(); const r=await api("scanOut",{despatchNo:DS.despatchNo,itemId:id});
       strip("dsStrip","ok","Picked by hand: "+id+" "+(r.item.Description||""));
       HAND=HAND.filter(x=>(x.ItemID||x.SerialNo)!==id); renderHand($("dsHandQ").value.trim()); refreshDespatch();
     }catch(err){ strip("dsStrip","bad",err.message); }
@@ -1212,6 +1229,7 @@ $("dsNote").onclick=async()=>{
 
 // ---------- cancel an order being prepared ----------
 $("dsCancel").onclick=async()=>{
+  if(DS && DS.draft){ DS=null; $("dsWork").style.display="none"; $("dsPick").style.display="block"; loadRequests(); return; }
   await refreshDespatch();
   const n=(DS.items||[]).length;
   if(!confirm("Cancel "+DS.despatchNo+"?"+(n?"\n\n"+n+" scanned item(s) will go back to stock.":""))) return;
