@@ -111,6 +111,30 @@
   .bigdone{text-align:center;padding:22px 14px}
   .bigdone .tick{font-size:52px;line-height:1;color:var(--ok);font-weight:700}
 </style>
+<style>
+  /* new-request alarm (3.2) */
+  #alBar{display:flex;gap:10px;align-items:center;justify-content:space-between;padding:10px 16px;font-size:14px;font-weight:600;background:#E6F3F4;color:var(--brand)}
+  #alBar.off{background:#FFE14D;color:#3D3200}
+  #alBar button{border:0;border-radius:8px;padding:10px 14px;font:inherit;font-weight:700;background:var(--brand);color:#fff;cursor:pointer}
+  #alBar.off button{background:#3D3200}
+  #alarm{position:fixed;inset:0;z-index:50;display:none;flex-direction:column;align-items:center;justify-content:center;padding:24px;
+         background:var(--bad);color:#fff;text-align:center}
+  #alarm.on{display:flex}
+  #alarm.flash{animation:alflash .5s ease-in-out 6}
+  @keyframes alflash{0%,100%{background:var(--bad)}50%{background:#FFE14D;color:#3D3200}}
+  #alarm h2{font-size:34px;margin:0 0 6px}
+  #alarm .al-list{max-width:640px;width:100%;max-height:50vh;overflow:auto;margin:14px 0;text-align:left}
+  #alarm .al-req{background:rgba(255,255,255,.14);border-radius:10px;padding:12px 14px;margin-bottom:10px;font-size:16px}
+  #alarm .al-req b{font-size:19px}
+  #alarm button{border:0;border-radius:12px;padding:20px 34px;font:inherit;font-size:24px;font-weight:700;background:#fff;color:var(--bad);cursor:pointer;margin-top:6px}
+  .rq-spec{font-size:15px;color:var(--ink);margin-top:4px}
+  .rq-said{font-size:13px;color:var(--muted);margin-top:4px;font-style:italic}
+  .rq-ids{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+  .rq-ids .tag{font-size:13px}
+  details.rq-reels{margin-top:6px} details.rq-reels summary{cursor:pointer;color:var(--brand);font-weight:600;font-size:14px}
+  details.rq-reels table{border-collapse:collapse;width:100%;font-size:13px;margin-top:6px}
+  details.rq-reels td,details.rq-reels th{border-bottom:1px solid var(--line);padding:4px 6px;text-align:left}
+</style>
 <style id="pageStyle"></style>
 </head>
 <body>
@@ -130,6 +154,7 @@
   <div><h1>Storage Solutions — Inventory</h1><div class="who" id="who"></div></div>
   <div class="hb"><button id="homeBtn">Home · <span lang="ar" style="font-family:'IBM Plex Sans Arabic',sans-serif">الرئيسية</span></button><button id="logout">Sign out</button></div>
 </header>
+<div id="alBar" class="off" hidden><span id="alText">New-request alarm is OFF on this iPad</span><button id="alEnable">Turn on alarm · <span lang="ar" style="font-family:'IBM Plex Sans Arabic',sans-serif">تشغيل التنبيه</span></button></div>
 <nav hidden>
   <button data-tab="home" class="on">Home</button>
   <button data-tab="load">Load</button>
@@ -502,13 +527,19 @@ Titles like Serial No, Batch #, Unit No, Gross W., Net W., GSM, Width, Container
 </main>
 </div>
 
+<div id="alarm" role="alertdialog" aria-labelledby="alTitle">
+  <h2 id="alTitle">NEW REQUEST</h2>
+  <div style="font-size:22px" lang="ar">طلب جديد</div>
+  <div class="al-list" id="alList"></div>
+  <button id="alAccept">Accept · <span lang="ar">استلام الطلب</span></button>
+</div>
 <div id="toast"></div>
 <div id="printArea"></div>
 
 <script>
 // ⚠ Must be the /exec link of your Apps Script deployment (Deploy > Manage deployments).
 const GAS_URL = "https://script.google.com/macros/s/AKfycbz1hy1Z5su7y3GJ5Lzy4AigAGUwRiwXIxrHn0WvO-OrXS4zD-sZPY6dzhZG5B5J4aCP/exec";
-const APP_VERSION = "3.1";
+const APP_VERSION = "3.2";
 
 const $ = id => document.getElementById(id);
 const esc = s => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
@@ -621,6 +652,91 @@ async function startApp(ping){
   await loadClients();
   loadVehicles();
   loadOpenShipments();
+  startAlerts();
+}
+
+// ---------- new-request alarm (3.2) ----------
+// The iPad asks the server every 30 s. A new request covers the screen, flashes and rings at once,
+// then every 3 minutes, until someone presses Accept (or starts preparing it).
+const AL={ctx:null, on:false, timer:null, lastRing:0, shown:"", list:[], checked:null, failed:false, wake:null, server:true};
+const RING_EVERY=3*60*1000, POLL_EVERY=30*1000;
+function alUnlock(){
+  try{
+    if(!AL.ctx) AL.ctx=new (window.AudioContext||window.webkitAudioContext)();
+    AL.ctx.resume();
+    const o=AL.ctx.createOscillator(), g=AL.ctx.createGain(); g.gain.value=0.0001; o.connect(g); g.connect(AL.ctx.destination); o.start(); o.stop(AL.ctx.currentTime+.05);
+  }catch(e){}
+  try{ if(window.speechSynthesis){ const u=new SpeechSynthesisUtterance(" "); u.volume=0; speechSynthesis.speak(u); } }catch(e){}
+  AL.on=true; alKeepAwake(); alBar(); alPoll();
+}
+async function alKeepAwake(){
+  try{ if("wakeLock" in navigator && (!AL.wake || AL.wake.released)) AL.wake=await navigator.wakeLock.request("screen"); }catch(e){}
+}
+document.addEventListener("visibilitychange",()=>{ if(document.visibilityState==="visible"){ alKeepAwake(); if(AL.ctx) try{AL.ctx.resume();}catch(e){} alPoll(); } });
+function alSoundOK(){ return AL.on && AL.ctx && AL.ctx.state==="running"; }
+function alBar(){
+  const bar=$("alBar"); bar.hidden=false;
+  const t=AL.checked?AL.checked.toLocaleTimeString("en-GB",{hour:"2-digit",minute:"2-digit"}):"—";
+  if(!AL.server){ bar.className="off"; $("alText").textContent="Alarm needs the new Code.gs (2.7) deployed"; $("alEnable").hidden=true; return; }
+  if(!alSoundOK()){ bar.className="off"; $("alText").textContent="Alarm sound is OFF — tap to turn it on"; $("alEnable").hidden=false; return; }
+  $("alEnable").hidden=true;
+  bar.className=AL.failed?"off":"";
+  $("alText").textContent=AL.failed?"Alarm on · no connection, last checked "+t+" — check WiFi":"Alarm on · last checked "+t;
+}
+$("alEnable").onclick=alUnlock;
+function alRing(){
+  AL.lastRing=Date.now();
+  const box=$("alarm"); box.classList.remove("flash"); void box.offsetWidth; box.classList.add("flash");
+  if(!alSoundOK()) return;
+  try{
+    const a=AL.ctx, t0=a.currentTime;
+    for(let k=0;k<6;k++){                     // ring-ring … about 3 seconds
+      [988,1319].forEach((f,j)=>{ const o=a.createOscillator(), g=a.createGain(); o.type="square"; o.frequency.value=f;
+        const st=t0+k*.5+j*.18; g.gain.setValueAtTime(0.0001,st); g.gain.exponentialRampToValueAtTime(0.5,st+.02); g.gain.exponentialRampToValueAtTime(0.0001,st+.16);
+        o.connect(g); g.connect(a.destination); o.start(st); o.stop(st+.18); });
+    }
+  }catch(e){}
+  try{ if(window.speechSynthesis){ const n=AL.list[0]; const u=new SpeechSynthesisUtterance("New request"+(n&&n.clientName?" from "+n.clientName:""));
+    u.rate=.95; u.volume=1; setTimeout(()=>speechSynthesis.speak(u),3200); } }catch(e){}
+}
+function alShow(){
+  const box=$("alarm");
+  if(!AL.list.length){ box.classList.remove("on","flash"); AL.shown=""; return; }
+  $("alList").innerHTML=AL.list.map(a=>`<div class="al-req"><b>${esc(a.requestNo)}</b> · ${esc(a.clientName)} · ${fmtDate(a.timestamp)} ${new Date(a.timestamp).toLocaleTimeString("en-GB",{hour:"2-digit",minute:"2-digit"})}
+    ${a.lines.slice(0,6).map(l=>`<div>${esc(l)}</div>`).join("")}${a.lines.length>6?`<div>… and ${a.lines.length-6} more line(s)</div>`:""}</div>`).join("");
+  const key=AL.list.map(a=>a.requestNo).join(",");
+  box.classList.add("on");
+  if(key!==AL.shown || Date.now()-AL.lastRing>=RING_EVERY){ AL.shown=key; alRing(); }
+}
+async function alPoll(){
+  clearTimeout(AL.timer);
+  if(!S.key){ return; }
+  try{
+    const r=await api("pendingAlerts");
+    AL.list=r.alerts||[]; AL.failed=false; AL.server=true; AL.checked=new Date();
+  }catch(e){
+    if(/Unknown action/i.test(e.message)) AL.server=false; else if(!/Not authorised/i.test(e.message)) AL.failed=true;
+  }
+  alBar(); alShow();
+  AL.timer=setTimeout(alPoll, POLL_EVERY);
+}
+$("alAccept").onclick=async()=>{
+  const b=$("alAccept"); b.disabled=true;
+  if(!alSoundOK()) alUnlock();            // this tap also turns the sound on
+  const nos=AL.list.map(a=>a.requestNo);
+  try{
+    for(const no of nos) await api("ackRequest",{requestNo:no});
+    AL.list=[]; alShow();
+    toast("Accepted "+nos.join(", ")+" by "+S.user+" · it's waiting in “New request to despatch”", true);
+    if(document.querySelector("#tab-despatch.on") && $("dsPick").style.display!=="none") loadRequests();
+  }catch(e){ toast(e.message, true); }
+  b.disabled=false; alPoll();
+};
+function startAlerts(){
+  alBar();
+  if(!AL.timer) alPoll();
+  // a ringing alarm that was never accepted rings again every 3 minutes even between polls
+  setInterval(()=>{ if(AL.list.length && Date.now()-AL.lastRing>=RING_EVERY) alRing(); alBar(); }, 15000);
 }
 
 // ---------- tabs ----------
@@ -1096,16 +1212,31 @@ async function loadRequests(){
     });
   }catch(e){ $("reqList").textContent=e.message; }
 }
+function idTags(i){
+  const b=(i.Batches&&i.Batches.length)?i.Batches:(i.BatchProject?[i.BatchProject]:[]);
+  const o=(i.OrderNos&&i.OrderNos.length)?i.OrderNos:(i.ClientRefPO?[i.ClientRefPO]:[]);
+  const one=(lbl,arr)=>`<span class="tag">${esc(lbl)}: ${arr.length?arr.map(esc).join(", "):"—"}</span>`;
+  return `<div class="rq-ids">${one(L(i.ClientCode,"BatchProject"),b)}${one("Mayr order #",o)}</div>`;
+}
 function reqLine(i){
-  if(i.ItemID) return `<div class="muted"><strong>${esc(i.Location||"?")}</strong> — ${esc(i.ItemID)} ${esc(i.Description||"")}</div>`;
+  if(i.ItemID) return `<div class="muted"><strong>${esc(i.Location||"?")}</strong> — ${esc(i.ItemID)} ${esc(i.Description||"")}${idTags(i)}</div>`;
   const byLoc={}, order=[];
   (i.Suggest||[]).forEach(s=>{ const k=s.Location||"?"; if(!(k in byLoc)){ byLoc[k]=0; order.push(k); } byLoc[k]++; });
   const sug=order.map(k=>`<strong>${esc(k)}</strong> × ${byLoc[k]}`).join(", ");
-  const spec=[i.BatchProject?"batch "+esc(i.BatchProject):"", i.GSM?esc(i.GSM)+" GSM":"", i.Width_mm?esc(i.Width_mm)+" mm":""].filter(Boolean).join(" · ");
+  const spec=[i.GSM?esc(i.GSM)+" GSM":"", i.Width_mm?"width "+esc(i.Width_mm)+" mm":"", i.Length_mm?"diameter "+esc(i.Length_mm)+" mm":"",
+    i.ClientRef?"code "+esc(i.ClientRef):"", i.BatchProject?"batch "+esc(i.BatchProject)+" (asked)":"", i.ClientRefPO?"order "+esc(i.ClientRefPO)+" (asked)":""].filter(Boolean).join(" · ");
   const short=(i.Available||0)<(parseInt(i.Qty,10)||1);
-  return `<div class="muted"><strong>${esc(i.Qty||1)} ×</strong> ${esc(i.Description||"")} ${spec?"· "+spec:""}
+  const reels=i.Matches||[];
+  return `<div class="muted"><strong>${esc(i.Qty||1)} ×</strong> ${esc(i.Description||"")}
     <span class="tag ${short?"bad":""}">${esc(i.Available||0)} in stock</span>
-    ${sug?`<div style="font-size:16px;color:var(--ink);margin-top:4px">Go to (oldest first): ${sug}</div>`:""}</div>`;
+    ${spec?`<div class="rq-spec">${spec}</div>`:""}
+    ${idTags(i)}
+    ${i.EmailLine?`<div class="rq-said">Mayr wrote: ${esc(i.EmailLine)}</div>`:""}
+    ${sug?`<div style="font-size:16px;color:var(--ink);margin-top:4px">Go to (oldest first): ${sug}</div>`:""}
+    ${reels.length?`<details class="rq-reels"><summary>Reels that fit (${reels.length}) — only these will scan</summary>
+      <table><tr><th>Shelf</th><th>${esc(L(i.ClientCode,"BatchProject"))}</th><th>Mayr order #</th><th>${esc(L(i.ClientCode,"UnitCode"))}</th><th>GSM</th><th>Width</th><th>Reel</th></tr>
+      ${reels.map(r=>`<tr><td>${esc(r.Location||"?")}</td><td>${esc(r.BatchProject)}</td><td>${esc(r.ClientRefPO)}</td><td>${esc(r.UnitCode)}</td><td>${esc(r.GSM)}</td><td>${esc(r.Width_mm)}</td><td>${esc(r.SerialNo||r.ItemID)}</td></tr>`).join("")}
+      </table></details>`:""}</div>`;
 }
 // Choosing a client or request only opens the scan screen. The despatch no. is created on the first scan or pick.
 async function startDespatch(clientCode, requestNo, temporary){
