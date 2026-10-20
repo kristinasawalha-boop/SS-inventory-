@@ -127,6 +127,11 @@
   #alarm .al-req{background:rgba(255,255,255,.14);border-radius:10px;padding:12px 14px;margin-bottom:10px;font-size:16px}
   #alarm .al-req b{font-size:19px}
   #alarm button{border:0;border-radius:12px;padding:20px 34px;font:inherit;font-size:24px;font-weight:700;background:#fff;color:var(--bad);cursor:pointer;margin-top:6px}
+  #alarm .al-stock{display:inline-block;margin-left:6px;padding:2px 8px;border-radius:6px;font-size:14px;font-weight:700;white-space:nowrap}
+  #alarm .al-stock.zero{background:#fff;color:var(--bad)}
+  #alarm .al-stock.short{background:#FFE14D;color:#3D3200}
+  #alarm .al-stock.ok{background:rgba(255,255,255,.25);color:#fff}
+  #alBar button.al-dev,#alBar.off button.al-dev{background:transparent;border:1px solid currentColor;color:inherit;font-weight:600;margin-left:6px}
   .rq-spec{font-size:15px;color:var(--ink);margin-top:4px}
   .rq-said{font-size:13px;color:var(--muted);margin-top:4px;font-style:italic}
   .rq-ids{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
@@ -154,7 +159,7 @@
   <div><h1>Storage Solutions — Inventory</h1><div class="who" id="who"></div></div>
   <div class="hb"><button id="homeBtn">Home · <span lang="ar" style="font-family:'IBM Plex Sans Arabic',sans-serif">الرئيسية</span></button><button id="logout">Sign out</button></div>
 </header>
-<div id="alBar" class="off" hidden><span id="alText">New-request alarm is OFF on this iPad</span><button id="alEnable">Turn on alarm · <span lang="ar" style="font-family:'IBM Plex Sans Arabic',sans-serif">تشغيل التنبيه</span></button></div>
+<div id="alBar" class="off" hidden><span id="alText">New-request alarm is OFF on this iPad</span><span><button id="alEnable">Turn on alarm · <span lang="ar" style="font-family:'IBM Plex Sans Arabic',sans-serif">تشغيل التنبيه</span></button><button id="alDevice" class="al-dev">Alarm off on this device</button></span></div>
 <nav hidden>
   <button data-tab="home" class="on">Home</button>
   <button data-tab="load">Load</button>
@@ -539,7 +544,7 @@ Titles like Serial No, Batch #, Unit No, Gross W., Net W., GSM, Width, Container
 <script>
 // ⚠ Must be the /exec link of your Apps Script deployment (Deploy > Manage deployments).
 const GAS_URL = "https://script.google.com/macros/s/AKfycbz1hy1Z5su7y3GJ5Lzy4AigAGUwRiwXIxrHn0WvO-OrXS4zD-sZPY6dzhZG5B5J4aCP/exec";
-const APP_VERSION = "3.2";
+const APP_VERSION = "3.4";
 
 const $ = id => document.getElementById(id);
 const esc = s => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
@@ -646,13 +651,19 @@ async function startApp(ping){
   // shows both versions, so you can see at a glance whether the new Apps Script deployment is live
   if(ping&&ping.name) S.user=ping.name;
   S.role=(ping&&ping.role)||"Manager";
-  $("who").textContent="Signed in as "+S.user+(S.role==="Warehouse"?" (warehouse)":"")+" · app "+APP_VERSION+" · server "+((ping&&ping.version)||"?");
-  document.querySelectorAll('[data-go="clients"]').forEach(b=>b.hidden=S.role==="Warehouse");
+  // the parts of the app this person may use (Staff Access tab). Older server: everything, as before.
+  S.areas=(ping&&Array.isArray(ping.areas))?ping.areas:["despatch","load","receive","stock","labels",S.role==="Warehouse"?"":"clients"];
+  $("who").textContent="Signed in as "+S.user+" · app "+APP_VERSION+" · server "+((ping&&ping.version)||"?");
+  ["despatch","load","receive","stock","labels","clients"].forEach(a=>{
+    document.querySelectorAll('[data-go="'+a+'"], nav button[data-tab="'+a+'"]').forEach(b=>b.hidden=!can(a));
+  });
+  if(!["despatch","load","receive","stock","labels"].some(can))
+    $("tab-home").insertAdjacentHTML("beforeend",'<p class="muted" id="noAccess">No parts of the app are switched on for you yet. Ask Tina.</p>');
   const now=new Date(); $("bsMonth").value=now.getFullYear()+"-"+String(now.getMonth()+1).padStart(2,"0");
   await loadClients();
   loadVehicles();
-  loadOpenShipments();
-  startAlerts();
+  if(can("receive")) loadOpenShipments();
+  if(can("despatch")) startAlerts(); else $("alBar").hidden=true;
 }
 
 // ---------- new-request alarm (3.2) ----------
@@ -660,6 +671,15 @@ async function startApp(ping){
 // then every 3 minutes, until someone presses Accept (or starts preparing it).
 const AL={ctx:null, on:false, timer:null, lastRing:0, shown:"", list:[], checked:null, failed:false, wake:null, server:true};
 const RING_EVERY=3*60*1000, POLL_EVERY=30*1000;
+// a device (e.g. a laptop) can switch the alarm off for itself only; the iPad and others keep ringing
+AL.deviceOff=(()=>{ try{ return localStorage.getItem("ssAlarmOffHere")==="1"; }catch(e){ return false; } })();
+$("alDevice").onclick=()=>{
+  AL.deviceOff=!AL.deviceOff;
+  try{ AL.deviceOff?localStorage.setItem("ssAlarmOffHere","1"):localStorage.removeItem("ssAlarmOffHere"); }catch(e){}
+  if(AL.deviceOff){ AL.list=[]; alShow(); toast("Alarm is off on this device only. The iPad still rings.", true); }
+  else toast("Alarm is on again on this device.", true);
+  alBar(); alPoll();
+};
 function alUnlock(){
   try{
     if(!AL.ctx) AL.ctx=new (window.AudioContext||window.webkitAudioContext)();
@@ -677,6 +697,8 @@ function alSoundOK(){ return AL.on && AL.ctx && AL.ctx.state==="running"; }
 function alBar(){
   const bar=$("alBar"); bar.hidden=false;
   const t=AL.checked?AL.checked.toLocaleTimeString("en-GB",{hour:"2-digit",minute:"2-digit"}):"—";
+  $("alDevice").textContent=AL.deviceOff?"Turn alarm on here":"Alarm off on this device";
+  if(AL.deviceOff){ bar.className="off"; $("alText").textContent="Alarm is off on this device (the iPad still rings)"; $("alEnable").hidden=true; return; }
   if(!AL.server){ bar.className="off"; $("alText").textContent="Alarm needs the new Code.gs (2.7) deployed"; $("alEnable").hidden=true; return; }
   if(!alSoundOK()){ bar.className="off"; $("alText").textContent="Alarm sound is OFF — tap to turn it on"; $("alEnable").hidden=false; return; }
   $("alEnable").hidden=true;
@@ -699,11 +721,17 @@ function alRing(){
   try{ if(window.speechSynthesis){ const n=AL.list[0]; const u=new SpeechSynthesisUtterance("New request"+(n&&n.clientName?" from "+n.clientName:""));
     u.rate=.95; u.volume=1; setTimeout(()=>speechSynthesis.speak(u),3200); } }catch(e){}
 }
+function alStock(st){
+  if(!st) return "";
+  if(!st.available) return '<span class="al-stock zero">0 in stock · reply to the client</span>';
+  if(st.available<st.qty) return '<span class="al-stock short">only '+st.available+' in stock</span>';
+  return '<span class="al-stock ok">'+st.available+' in stock</span>';
+}
 function alShow(){
   const box=$("alarm");
   if(!AL.list.length){ box.classList.remove("on","flash"); AL.shown=""; return; }
   $("alList").innerHTML=AL.list.map(a=>`<div class="al-req"><b>${esc(a.requestNo)}</b> · ${esc(a.clientName)} · ${fmtDate(a.timestamp)} ${new Date(a.timestamp).toLocaleTimeString("en-GB",{hour:"2-digit",minute:"2-digit"})}
-    ${a.lines.slice(0,6).map(l=>`<div>${esc(l)}</div>`).join("")}${a.lines.length>6?`<div>… and ${a.lines.length-6} more line(s)</div>`:""}</div>`).join("");
+    ${a.lines.slice(0,6).map((l,j)=>`<div>${esc(l)} ${alStock(a.stock&&a.stock[j])}</div>`).join("")}${a.lines.length>6?`<div>… and ${a.lines.length-6} more line(s)</div>`:""}</div>`).join("");
   const key=AL.list.map(a=>a.requestNo).join(",");
   box.classList.add("on");
   if(key!==AL.shown || Date.now()-AL.lastRing>=RING_EVERY){ AL.shown=key; alRing(); }
@@ -711,6 +739,7 @@ function alShow(){
 async function alPoll(){
   clearTimeout(AL.timer);
   if(!S.key){ return; }
+  if(AL.deviceOff){ AL.list=[]; alBar(); alShow(); return; }
   try{
     const r=await api("pendingAlerts");
     AL.list=r.alerts||[]; AL.failed=false; AL.server=true; AL.checked=new Date();
@@ -736,7 +765,7 @@ function startAlerts(){
   alBar();
   if(!AL.timer) alPoll();
   // a ringing alarm that was never accepted rings again every 3 minutes even between polls
-  setInterval(()=>{ if(AL.list.length && Date.now()-AL.lastRing>=RING_EVERY) alRing(); alBar(); }, 15000);
+  setInterval(()=>{ if(AL.deviceOff) return; if(AL.list.length && Date.now()-AL.lastRing>=RING_EVERY) alRing(); alBar(); }, 15000);
 }
 
 // ---------- tabs ----------
@@ -753,7 +782,8 @@ document.querySelectorAll("nav button").forEach(b=>b.onclick=()=>{
 });
 
 // ---------- home screen navigation ----------
-function showTab(t){ const b=document.querySelector('nav button[data-tab="'+t+'"]'); if(b) b.click(); window.scrollTo(0,0); }
+function can(a){ return a==="home" || (S.areas||[]).indexOf(a)>=0; }
+function showTab(t, force){ if(!force && !can(t)){ toast("You don't have access to that. Ask Tina."); t="home"; } const b=document.querySelector('nav button[data-tab="'+t+'"]'); if(b) b.click(); window.scrollTo(0,0); }
 document.querySelectorAll("[data-go]").forEach(b=>b.onclick=()=>showTab(b.dataset.go));
 $("homeBtn").onclick=()=>showTab("home");
 
@@ -788,7 +818,7 @@ function renderLastLoad(){
 }
 async function loadTruck(no){
   if(!no) return toast("Type the despatch no.");
-  showTab("despatch");
+  showTab("despatch", true);   // loading uses the despatch screens, also for people with Load only
   await openDespatch(no);
   if(DS && DS.despatchNo) $("dsPickup").onclick();
 }
