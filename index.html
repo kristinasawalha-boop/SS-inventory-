@@ -76,6 +76,17 @@
     .labels-a4{display:grid;grid-template-columns:repeat(3,70mm);grid-auto-rows:37mm;width:210mm}
     .labels-a4 .lab{width:70mm;height:37mm}
     .labels-roll .lab{width:50mm;height:25mm;page-break-after:always}
+    .labels-big .sheet{display:grid;grid-template-columns:repeat(2,99.1mm);grid-auto-rows:67.7mm;column-gap:2.5mm;
+      padding:13mm 0 0 4.65mm;width:210mm;height:297mm;box-sizing:border-box;page-break-after:always;break-after:page}
+    .labels-big .sheet:last-child{page-break-after:auto;break-after:auto}
+    .labels-big .lab{width:99.1mm;height:67.7mm;display:flex;flex-direction:column;align-items:stretch;justify-content:flex-start;padding:4mm 5mm 3mm;box-sizing:border-box;text-align:center;overflow:hidden;font-family:Arial,Helvetica,sans-serif}
+    .labels-big .brand{display:flex;justify-content:space-between;align-items:baseline;border-bottom:.4mm solid #00727A;padding-bottom:1.2mm;color:#00727A}
+    .labels-big .brand b{font-size:11pt;letter-spacing:.45mm}
+    .labels-big .brand span{font-size:7pt;color:#555}
+    .labels-big .mid{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center}
+    .labels-big .lab .code{font-weight:800;font-size:22pt;letter-spacing:.5mm;margin-top:1mm}
+    .labels-big .lab .desc{font-size:8pt;color:#333;margin-top:.5mm}
+    .labels-big .foot{text-align:left;font-size:9pt;color:#333;border-top:.3mm solid #ccc;padding-top:1.5mm}
     .lab{display:flex;flex-direction:column;align-items:center;justify-content:center;overflow:hidden;padding:2mm;text-align:center}
     .lab svg{max-width:100%;height:auto}
     .lab .code{font-weight:700;font-size:11pt}
@@ -454,7 +465,7 @@ Titles like Serial No, Batch #, Unit No, Gross W., Net W., GSM, Width, Container
     <div class="row">
       <div><label for="lbCount">How many</label><input id="lbCount" type="number" min="1" max="500" value="24"></div>
       <div><label for="lbType">Type</label><select id="lbType"><option value="item">Item (SS-)</option><option value="pallet">Pallet (PL-)</option></select></div>
-      <div><label for="lbLayout">Printing on</label><select id="lbLayout"><option value="a4">A4 sticker sheet (3×8)</option><option value="roll">Label printer 50×25 mm</option></select></div>
+      <div><label for="lbLayout">Printing on</label><select id="lbLayout"><option value="big" selected>Large labels 99×68 mm, 8 per A4 sheet (2×4)</option><option value="a4">Small labels, 24 per A4 sheet (3×8)</option><option value="roll">Label printer 50×25 mm</option></select></div>
     </div>
     <button class="btn main" id="lbGo">Print labels</button>
     <p class="muted">Numbers continue from the last batch and are never reused.</p>
@@ -1179,10 +1190,20 @@ $("stGo").onclick=searchStock;
 $("stQ").addEventListener("keydown",e=>{ if(e.key==="Enter") searchStock(); });
 
 // ---------- labels & printing ----------
-function setPage(layout){ $("pageStyle").textContent = layout==="roll" ? "@page{size:50mm 25mm;margin:0}" : "@page{size:A4;margin:10mm 0 0 0}"; }
+function setPage(layout){ $("pageStyle").textContent = layout==="roll" ? "@page{size:50mm 25mm;margin:0}" : layout==="big" ? "@page{size:A4;margin:0}" : "@page{size:A4;margin:10mm 0 0 0}"; }
 function printLabels(list, layout){
   setPage(layout);
   const area=$("printArea");
+  if(layout==="big"){   // 8 per A4 sheet, Storage Solutions on top, date in written by hand
+    const pages=[]; for(let i=0;i<list.length;i+=8) pages.push(list.slice(i,i+8));
+    area.innerHTML=`<div class="labels-big">`+pages.map((pg,p)=>`<div class="sheet">`+pg.map((l,j)=>`
+      <div class="lab"><div class="brand"><b>STORAGE SOLUTIONS</b><span>Madaba · storagesolutions.jo</span></div>
+      <div class="mid"><svg id="bc${p*8+j}"></svg><div class="code">${esc(l.code)}</div>${l.desc?`<div class="desc">${esc(l.desc)}</div>`:""}</div>
+      <div class="foot">Date in: ______________________</div></div>`).join("")+`</div>`).join("")+`</div>`;
+    list.forEach((l,i)=>JsBarcode("#bc"+i,l.code,{format:"CODE128",displayValue:false,height:l.desc?70:80,width:2.4,margin:0}));
+    setTimeout(()=>window.print(),150);
+    return;
+  }
   area.innerHTML=`<div class="${layout==="roll"?"labels-roll":"labels-a4"}">`+list.map((l,i)=>`
     <div class="lab"><svg id="bc${i}"></svg><div class="code">${esc(l.code)}</div>${l.desc?`<div class="desc">${esc(l.desc)}</div>`:""}</div>`).join("")+`</div>`;
   list.forEach((l,i)=>JsBarcode("#bc"+i,l.code,{format:"CODE128",displayValue:false,height:layout==="roll"?34:44,width:1.5,margin:0}));
@@ -1197,7 +1218,8 @@ $("lbGo").onclick=async()=>{
 async function reprint(id){
   try{
     const r=await api("logReprint",{itemId:id});
-    printLabels([{code:r.itemId,desc:[r.clientName,r.description].filter(Boolean).join(" · ")}],$("lbLayout").value);
+    const lay=$("lbLayout").value;
+    printLabels([{code:r.itemId,desc:lay==="big"?(r.description||""):[r.clientName,r.description].filter(Boolean).join(" · ")}],lay);
   }catch(e){ toast(e.message); }
 }
 $("rpGo").onclick=()=>{ const v=$("rpId").value.trim(); if(v) reprint(v); };
