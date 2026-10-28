@@ -85,7 +85,7 @@
     .labels-big .brand span{font-size:7pt;color:#555}
     .labels-big .mid{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center}
     .labels-big .lab .code{font-weight:800;font-size:22pt;letter-spacing:.5mm;margin-top:1mm}
-    .labels-big .lab .desc{font-size:8pt;color:#333;margin-top:.5mm}
+    .labels-big .lab .desc{font-size:10pt;color:#222;margin-top:1mm}
     .labels-big .foot{text-align:left;font-size:9pt;color:#333;border-top:.3mm solid #ccc;padding-top:1.5mm}
     .lab{display:flex;flex-direction:column;align-items:center;justify-content:center;overflow:hidden;padding:2mm;text-align:center}
     .lab svg{max-width:100%;height:auto}
@@ -269,6 +269,10 @@ Titles like Serial No, Batch #, Unit No, Gross W., Net W., GSM, Width, Container
       </div>
       <div class="progress"><div id="rxBar" style="width:0"></div></div>
       <div class="muted" id="rxCount"></div>
+      <div class="row" style="align-items:flex-end;margin-top:6px">
+        <div><label for="rxDate">Date in (for lines without their own date)</label><input id="rxDate" type="date"></div>
+        <div style="flex:0 0 auto"><button class="btn alt" id="rxLabels">Print labels for this shipment</button></div>
+      </div>
     </div>
 
     <div class="scanbox">
@@ -621,13 +625,14 @@ const FIELD = {
   ExpiryDate:["expirydate","expiry"],
   PartNo:["partno","part","partnumber","model"],
   Notes:["remarks","notes","note"],
-  Shape:["shape"]
+  Shape:["shape"],
+  DateIn:["datein","grvdate","arrivaldate","datereceived","receiveddate"]
 };
 const FIELD_INDEX = {}; Object.keys(FIELD).forEach(c=>{ FIELD_INDEX[nz(c)]=c; FIELD[c].forEach(a=>FIELD_INDEX[a]=c); });
 const FIELD_LABEL = {SerialNo:"Serial No",Description:"Description",BatchProject:"Batch #",UnitCode:"Unit No",ClientRefPO:"Order #",
   ClientRef:"Client Reference",Weight_kg:"Gross W. (kg)",NetWeight_kg:"Net W. (kg)",GSM:"GSM",Width_mm:"Width (mm)",
   Length_mm:"Length / diameter (mm)",Height_mm:"Height (mm)",ContainerNo:"Container No",ProdDate:"Production/handover date",
-  ExpiryDate:"Expiry date",PartNo:"Part No",Notes:"Remarks",Shape:"Shape"};
+  ExpiryDate:"Expiry date",DateIn:"Date in",PartNo:"Part No",Notes:"Remarks",Shape:"Shape"};
 const DEFAULT_ORDER = ["Description","SerialNo","BatchProject","UnitCode","Weight_kg","NetWeight_kg","GSM","Width_mm","Length_mm","ClientRefPO","ClientRef","ProdDate","Notes"];
 
 function clientOf(code){ return CLIENTS.find(c=>String(c.ClientCode).toUpperCase()===String(code||"").toUpperCase())||{}; }
@@ -960,11 +965,15 @@ async function loadOpenShipments(){
 // Only stops to ask when details are missing or no shelf has been typed yet.
 let RX={shipmentNo:null,lines:[],line:null,code:null,step:"item",extra:null,nolist:false,busy:false};
 const LAST_LOC={};   // last shelf typed, per shipment
+const LAST_DATE={};  // date in chosen, per shipment
+function isoToday(){const d=new Date();return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0")}
+function lineDate(v){if(!v)return "";const d=new Date(v);if(isNaN(d))return String(v);return String(d.getDate()).padStart(2,"0")+"/"+String(d.getMonth()+1).padStart(2,"0")+"/"+d.getFullYear()}
+function dmy(iso){const m=String(iso||"").match(/^(\d{4})-(\d{2})-(\d{2})/);return m?m[3]+"/"+m[2]+"/"+m[1]:""}
 
 async function openShipment(no){
   RX={shipmentNo:no,lines:[],line:null,code:null,step:"item",extra:null,nolist:false,busy:false};
   $("rxPick").style.display="none"; $("rxWork").style.display="block";
-  $("rxLoc").value=LAST_LOC[no]||""; $("rxNote").value="";
+  $("rxLoc").value=LAST_LOC[no]||""; $("rxNote").value=""; $("rxDate").value=LAST_DATE[no]||isoToday(); $("rxLabels").style.display=no?"":"none";
   $("rxTitle").textContent=no; strip("rxStrip","info",$("rxLoc").value?"Shelf "+$("rxLoc").value+" — scan the first item.":"Type the shelf location, then scan the first item.");
   await refreshShipment(); resetScan();
   if(!$("rxLoc").value) $("rxLoc").focus();
@@ -986,7 +995,7 @@ async function refreshShipment(){
     const t=l.Received==="Yes"?'<span class="tag ok">received</span>':l.Received==="Extra"?'<span class="tag warn">extra</span>':'<span class="tag">waiting</span>';
     const miss=req.filter(f=>String(l[f]==null?"":l[f]).trim()==="");
     return `<div class="item">${esc(l.Description||"")} ${t}${miss.length&&l.Received!=="No"?'<span class="tag bad">missing details</span>':""}
-      <div class="muted">${itemLine(l,first.ClientCode)} ${l.ItemID?"· "+esc(l.ItemID)+" → "+esc(l.Location):""}</div>
+      <div class="muted">${itemLine(l,first.ClientCode)}${l.ClientRef?" · "+esc(l.ClientRef):""} ${l.ItemID?"· "+esc(l.ItemID)+(l.Received==="No"?" (label printed)":" → "+esc(l.Location)):""}</div>
       ${l.Notes?`<div class="muted" style="color:var(--bad)">${esc(l.Notes)}</div>`:""}</div>`;
   }).join("");
 }
@@ -1103,12 +1112,27 @@ async function doReceive(){
   }
   RX.busy=false; $("rxSave").disabled=false;
 }
+$("rxDate").addEventListener("change",()=>{ if(RX.shipmentNo) LAST_DATE[RX.shipmentNo]=$("rxDate").value; });
+$("rxLabels").onclick=async()=>{
+  if(!RX.shipmentNo) return;
+  const d=$("rxDate").value; if(!d) return toast("Choose the Date in first");
+  $("rxLabels").disabled=true;
+  try{
+    const lines=await api("labelShipment",{shipmentNo:RX.shipmentNo});
+    const list=lines.filter(l=>l.ItemID).map(l=>({code:l.ItemID,desc:[l.Description,l.ClientRef].filter(Boolean).join(" · "),date:lineDate(l.DateIn)||dmy(d)}));
+    if(!list.length) return toast("Every waiting line already has its own barcode or serial — nothing to print");
+    await refreshShipment();
+    printLabels(list,"big");
+  }catch(e){ toast(e.message); }
+  finally{ $("rxLabels").disabled=false; }
+};
 $("rxComplete").onclick=async()=>{
   if(!RX.shipmentNo) return toast("Nothing received yet");
   const waiting=RX.lines.filter(l=>l.Received==="No").length;
-  if(!confirm("Complete "+RX.shipmentNo+" and issue a GRV?"+(waiting?"\n\n"+waiting+" line(s) not received will be marked MISSING.":""))) return;
+  const din=$("rxDate").value;
+  if(!confirm("Complete "+RX.shipmentNo+" and issue a GRV?\nDate in: "+(dmy(din)||"today")+(waiting?"\n\n"+waiting+" line(s) not received will be marked MISSING.":""))) return;
   try{
-    const r=await api("completeShipment",{shipmentNo:RX.shipmentNo});
+    const r=await api("completeShipment",{shipmentNo:RX.shipmentNo,dateIn:din});
     alert("GRV "+r.grv+" issued.\n"+r.received+" items moved into stock"+(r.missing.length?"\n"+r.missing.length+" marked missing":""));
     $("rxBack").onclick();
   }catch(e){ alert(e.message); }
@@ -1199,7 +1223,7 @@ function printLabels(list, layout){
     area.innerHTML=`<div class="labels-big">`+pages.map((pg,p)=>`<div class="sheet">`+pg.map((l,j)=>`
       <div class="lab"><div class="brand"><b>STORAGE SOLUTIONS</b><span>Madaba · storagesolutions.jo</span></div>
       <div class="mid"><svg id="bc${p*8+j}"></svg><div class="code">${esc(l.code)}</div>${l.desc?`<div class="desc">${esc(l.desc)}</div>`:""}</div>
-      <div class="foot">Date in: ______________________</div></div>`).join("")+`</div>`).join("")+`</div>`;
+      <div class="foot">Date in: ${l.date?esc(l.date):"______________________"}</div></div>`).join("")+`</div>`).join("")+`</div>`;
     list.forEach((l,i)=>JsBarcode("#bc"+i,l.code,{format:"CODE128",displayValue:false,height:l.desc?70:80,width:2.4,margin:0}));
     setTimeout(()=>window.print(),150);
     return;
@@ -1219,7 +1243,7 @@ async function reprint(id){
   try{
     const r=await api("logReprint",{itemId:id});
     const lay=$("lbLayout").value;
-    printLabels([{code:r.itemId,desc:lay==="big"?(r.description||""):[r.clientName,r.description].filter(Boolean).join(" · ")}],lay);
+    printLabels([{code:r.itemId,date:r.dateIn||"",desc:lay==="big"?(r.description||""):[r.clientName,r.description].filter(Boolean).join(" · ")}],lay);
   }catch(e){ toast(e.message); }
 }
 $("rpGo").onclick=()=>{ const v=$("rpId").value.trim(); if(v) reprint(v); };
