@@ -504,8 +504,9 @@ Titles like Serial No, Batch #, Unit No, Gross W., Net W., GSM, Width, Container
     </div>
     <h3>Billing</h3>
     <div class="row">
-      <div><label for="cBasis">Storage charged by</label><select id="cBasis"><option>Ton</option><option>CBM</option><option>Unit</option></select></div>
-      <div><label for="cRate">Storage rate (JD per unit per day)</label><input id="cRate" inputmode="decimal" placeholder="0.125"></div>
+      <div><label for="cBasis">Storage charged by</label><select id="cBasis"><option>Ton</option><option>Pallet</option><option>Box</option><option>Reel</option><option>CBM</option><option>Unit</option></select></div>
+      <div><label for="cRate">Storage rate (JD)</label><input id="cRate" inputmode="decimal" placeholder="0.125"></div>
+      <div><label for="cPer">Rate is per</label><select id="cPer"><option value="Day">Day</option><option value="Month">Month</option></select></div>
     </div>
     <div class="row">
       <div><label for="cHin">Handling in (JD per shipment)</label><input id="cHin" inputmode="decimal"></div>
@@ -861,7 +862,7 @@ function renderClients(){
       ${c.HasPassword?'<span class="tag ok">portal on</span>':'<span class="tag warn">no password</span>'}
       ${c.Active==="No"?'<span class="tag bad">inactive</span>':''}
       ${!c.StorageRate?'<span class="tag warn">no storage rate</span>':''}
-      <div class="muted">${esc(c.BillingBasis||"")} ${c.StorageRate?"· "+esc(c.StorageRate)+" JD/day":""} ${c.ContactPerson?"· "+esc(c.ContactPerson):""}</div></div>`).join("")
+      <div class="muted">${esc(c.BillingBasis||"")} ${c.StorageRate?"· "+esc(c.StorageRate)+" JD per "+esc(String(c.BillingBasis||"unit").toLowerCase())+" per "+(/month/i.test(c.StoragePricePeriod||"")?"month":"day"):""} ${c.ContactPerson?"· "+esc(c.ContactPerson):""}</div></div>`).join("")
     : "No clients yet — add one below.";
   $("clList").querySelectorAll(".item").forEach(el=>el.onclick=()=>fillClient(CLIENTS[el.dataset.i]));
 }
@@ -869,7 +870,8 @@ function fillClient(c){
   $("clFormTitle").textContent="Edit "+c.ClientName;
   $("cName").value=c.ClientName||""; $("cCode").value=c.ClientCode||""; $("cType").value=c.ClientType||"Business";
   $("cContact").value=c.ContactPerson||""; $("cPhone").value=c.ContactPhone1||""; $("cEmail").value=c.ContactEmail1||"";
-  $("cBasis").value=["Ton","CBM","Unit"].find(x=>x.toLowerCase()===String(c.BillingBasis||"").toLowerCase())||"Ton";
+  $("cPer").value=/month/i.test(c.StoragePricePeriod||"")?"Month":"Day";
+  $("cBasis").value=["Ton","Pallet","Box","Reel","CBM","Unit"].find(x=>x.toLowerCase()===String(c.BillingBasis||"").toLowerCase())||"Ton";
   $("cRate").value=c.StorageRate||""; $("cHin").value=c.HandlingInPrice||""; $("cHout").value=c.HandlingOutPrice||"";
   $("cTax").value=c.TaxRate||""; $("cReq").value=c.RequiredFields||""; $("cLabels").value=c.FieldLabels||"";
   $("cPickup").value=c.ShowPickupToClient||"No"; $("cActive").value=c.Active||"Yes"; $("pwCode").value=c.ClientCode||"";
@@ -879,7 +881,7 @@ $("cNew").onclick=()=>{ ["cName","cCode","cContact","cPhone","cEmail","cRate","c
 $("cSave").onclick=async()=>{
   const client={ClientName:$("cName").value.trim(),ClientCode:$("cCode").value.trim(),ClientType:$("cType").value,
     ContactPerson:$("cContact").value.trim(),ContactPhone1:$("cPhone").value.trim(),ContactEmail1:$("cEmail").value.trim(),
-    BillingBasis:$("cBasis").value,StorageRate:$("cRate").value.trim(),HandlingInPrice:$("cHin").value.trim(),
+    BillingBasis:$("cBasis").value,StoragePricePeriod:$("cPer").value,StorageRate:$("cRate").value.trim(),HandlingInPrice:$("cHin").value.trim(),
     HandlingOutPrice:$("cHout").value.trim(),TaxRate:$("cTax").value.trim(),RequiredFields:$("cReq").value.trim(),
     FieldLabels:$("cLabels").value.trim(),ShowPickupToClient:$("cPickup").value,Active:$("cActive").value};
   try{ await api("saveClient",{client}); toast("Client saved"); await loadClients(); }catch(e){ toast(e.message); }
@@ -900,6 +902,15 @@ $("bsGo").onclick=async()=>{
 
 // ---------- receive: new shipment ----------
 let PARSED=[];
+const MON={jan:1,feb:2,mar:3,apr:4,may:5,jun:6,jul:7,aug:8,sep:9,oct:10,nov:11,dec:12};
+function normDate(v){v=String(v||"").trim();if(!v)return "";let m=v.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);if(m)return m[1]+"-"+m[2].padStart(2,"0")+"-"+m[3].padStart(2,"0");
+  m=v.match(/^(\d{1,2})[\/.\-](\d{1,2})[\/.\-](\d{2,4})$/);if(m){const y=m[3].length===2?"20"+m[3]:m[3];return y+"-"+m[2].padStart(2,"0")+"-"+m[1].padStart(2,"0")}
+  m=v.match(/^(\d{1,2})[\s\-\/.]*([A-Za-z]{3})[A-Za-z]*[\s\-\/.,]*(\d{2,4})?$/);
+  if(m&&MON[m[2].toLowerCase()]){const now=new Date();let y=m[3]?(m[3].length===2?2000+Number(m[3]):Number(m[3])):now.getFullYear();
+    const mo=MON[m[2].toLowerCase()];if(!m[3]&&new Date(y,mo-1,Number(m[1]))>now)y--;   // no year: the latest date not in the future
+    return y+"-"+String(mo).padStart(2,"0")+"-"+m[1].padStart(2,"0")}
+  return v}
+function isoLocal(v){if(!v)return "";const d=new Date(v);if(isNaN(d))return String(v);return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0")}
 function parseList(text, hasHead){
   const rows=text.split(/\r?\n/).filter(r=>r.trim()).map(r=>r.includes("\t")?r.split("\t"):r.split(","));
   if(!rows.length) return [];
@@ -912,6 +923,7 @@ function parseList(text, hasHead){
       o[f]=v;
     });
     ["Weight_kg","NetWeight_kg"].forEach(k=>{ if(o[k]) o[k]=o[k].replace(/kg/i,"").replace(/,/g,"").trim(); });
+    if(o.DateIn) o.DateIn=normDate(o.DateIn);
     // serial like 4418700070001 with no unit: unit = last 4 digits
     if(!o.UnitCode && /^\d{9,}$/.test(o.SerialNo||"")) o.UnitCode=String(parseInt(o.SerialNo.slice(-4),10));
     return o;
@@ -1199,13 +1211,13 @@ async function searchStock(){
   }catch(e){ $("stResults").innerHTML='<p class="muted">'+esc(e.message)+'</p>'; }
 }
 function editForm(r, boxId){
-  const f=["SerialNo","Weight_kg","NetWeight_kg","BatchProject","UnitCode","Notes"];
-  const box=$(boxId);
+  const f=["DateIn","SerialNo","Weight_kg","NetWeight_kg","BatchProject","UnitCode","Notes"];
+  const box=$(boxId), shown=k=>k==="DateIn"?isoLocal(r.DateIn):(r[k]==null?"":r[k]);
   box.innerHTML=`<div class="detail"><div class="row">`+f.map(k=>`<div><label>${esc(L(r.ClientCode,k))}</label>
-    <input data-k="${k}" value="${esc(r[k]==null?"":r[k])}"></div>`).join("")+`</div>
+    <input data-k="${k}" ${k==="DateIn"?'type="date"':""} value="${esc(shown(k))}"></div>`).join("")+`</div>
     <button class="btn main small">Save details</button></div>`;
   box.querySelector("button").onclick=async()=>{
-    const fields={}; box.querySelectorAll("input[data-k]").forEach(i=>{ const old=r[i.dataset.k]==null?"":String(r[i.dataset.k]); if(i.value.trim()!==old.trim()) fields[i.dataset.k]=i.value.trim(); });
+    const fields={}; box.querySelectorAll("input[data-k]").forEach(i=>{ const old=String(shown(i.dataset.k)); if(i.value.trim()!==old.trim()) fields[i.dataset.k]=i.value.trim(); });
     if(!Object.keys(fields).length) return toast("Nothing changed");
     try{ await api("editItem",{itemId:r.ItemID||r.SerialNo,fields}); toast("Saved"); searchStock(); }catch(e){ toast(e.message, true); }
   };
