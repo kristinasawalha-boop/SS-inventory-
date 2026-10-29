@@ -443,6 +443,12 @@ Titles like Serial No, Batch #, Unit No, Gross W., Net W., GSM, Width, Container
     <div class="card">
       <h2>Driver details<span class="ar" lang="ar">بيانات السائق</span></h2>
       <div class="row">
+        <div><label for="puDate">Despatch date · <span lang="ar" style="font-family:'IBM Plex Sans Arabic',sans-serif">تاريخ الإخراج</span></label><input id="puDate" type="date"></div>
+        <div><label for="puVoucher">Paper voucher no. (optional)</label><input id="puVoucher" inputmode="numeric" placeholder="leave empty for a new GIV no."></div>
+      </div>
+      <label class="inline"><input type="checkbox" id="puNoEmail"> Don't email the Goods Issue Voucher</label>
+      <div class="strip warn" id="puDateNote" style="display:none"></div>
+      <div class="row">
         <div><label for="puDriver">Driver name</label><input id="puDriver"></div>
         <div><label for="puPlate">Plate no.</label><input id="puPlate"></div>
       </div>
@@ -560,7 +566,8 @@ Titles like Serial No, Batch #, Unit No, Gross W., Net W., GSM, Width, Container
 <script>
 // ⚠ Must be the /exec link of your Apps Script deployment (Deploy > Manage deployments).
 const GAS_URL = "https://script.google.com/macros/s/AKfycbz1hy1Z5su7y3GJ5Lzy4AigAGUwRiwXIxrHn0WvO-OrXS4zD-sZPY6dzhZG5B5J4aCP/exec";
-const APP_VERSION = "3.4";
+const APP_VERSION = "3.5";
+let SERVER_VERSION = "";
 
 const $ = id => document.getElementById(id);
 const esc = s => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
@@ -670,7 +677,8 @@ async function startApp(ping){
   S.role=(ping&&ping.role)||"Manager";
   // the parts of the app this person may use (Staff Access tab). Older server: everything, as before.
   S.areas=(ping&&Array.isArray(ping.areas))?ping.areas:["despatch","load","receive","stock","labels",S.role==="Warehouse"?"":"clients"];
-  $("who").textContent="Signed in as "+S.user+" · app "+APP_VERSION+" · server "+((ping&&ping.version)||"?");
+  SERVER_VERSION=(ping&&ping.version)||"";
+  $("who").textContent="Signed in as "+S.user+" · app "+APP_VERSION+" · server "+(SERVER_VERSION||"?");
   ["despatch","load","receive","stock","labels","clients"].forEach(a=>{
     document.querySelectorAll('[data-go="'+a+'"], nav button[data-tab="'+a+'"]').forEach(b=>b.hidden=!can(a));
   });
@@ -1509,6 +1517,7 @@ $("dsPickup").onclick=async()=>{
   LOADED={};
   $("dsWork").style.display="none"; $("dsReady").style.display="none"; $("puWork").style.display="block"; window.scrollTo(0,0);
   $("puTitle").textContent="Pickup — "+DS.despatchNo+" — "+DS.clientName;
+  $("puDate").value=isoToday(); $("puDate").max=isoToday(); $("puVoucher").value=""; $("puNoEmail").checked=false; puDateNote();
   renderLoad(); sizeSig(); $("puScan").focus();
 };
 function renderLoad(){
@@ -1528,6 +1537,14 @@ $("puScan").addEventListener("keydown",e=>{
   if(LOADED[id]){ strip("puStrip","warn",id+" is already on the truck"); beep(false); return; }
   LOADED[id]=true; strip("puStrip","ok","On the truck: "+id); renderLoad();
 });
+function puDateNote(){
+  const d=$("puDate").value, v=$("puVoucher").value.trim(), n=$("puDateNote"), bits=[];
+  if(d && d!==isoToday()) bits.push("Back-dated: stock, statement and billing will show this as collected on "+dmy(d)+".");
+  if(v) bits.push("GIV no. "+v+" from the paper voucher will be used. Driver details are optional.");
+  n.textContent=bits.join(" "); n.style.display=bits.length?"block":"none";
+}
+$("puDate").addEventListener("change",puDateNote);
+$("puVoucher").addEventListener("input",puDateNote);
 $("puBack").onclick=()=>{ $("puWork").style.display="none"; $("dsReady").style.display="block"; };
 
 const sig=$("sig"); let sctx, drawing=false, inked=false;
@@ -1550,19 +1567,26 @@ function photoToDataUrl(file){
 }
 $("puGo").onclick=async()=>{
   const driverName=$("puDriver").value.trim(), plateNo=$("puPlate").value.trim();
-  if(!driverName||!plateNo) return toast("Enter the driver name and plate no.");
+  const despatchDate=$("puDate").value||isoToday(), voucherNo=$("puVoucher").value.trim(), noEmail=$("puNoEmail").checked;
+  if(despatchDate>isoToday()) return toast("The despatch date can't be in the future");
+  if(!voucherNo && (!driverName||!plateNo)) return toast("Enter the driver name and plate no.");
+  const sv=String(SERVER_VERSION).split(".").map(Number), newServer=sv[0]>2||(sv[0]===2&&(sv[1]||0)>=11);
+  if((despatchDate!==isoToday()||voucherNo||noEmail) && !newServer)
+    return alert("The server is still on "+(SERVER_VERSION||"an older version")+". Install SS Inventory Code.gs 2.11 first, or the date, paper no. and email choice would be ignored.");
   const notLoaded=DS.items.filter(i=>!LOADED[i.ItemID||i.SerialNo]);
   if(notLoaded.length) return toast(notLoaded.length+" item(s) not loaded yet — scan or tick them, or Undo them on the previous screen.", true);
   let imageDataUrl="";
   const f=$("puPhoto").files[0];
   if(f) imageDataUrl=await photoToDataUrl(f); else if(inked) imageDataUrl=sig.toDataURL("image/png");
-  if(!imageDataUrl && !confirm("No signature or photo. Record the pickup anyway?")) return;
+  if(!imageDataUrl && !voucherNo && !confirm("No signature or photo. Record the pickup anyway?")) return;
+  if(despatchDate!==isoToday() && !confirm("Record this pickup as collected on "+dmy(despatchDate)+"?")) return;
   $("puGo").disabled=true;
   try{
     const r=await api("recordPickup",{despatchNo:DS.despatchNo,driverName,plateNo,driverId:$("puId").value.trim(),
-      vehicleType:$("puVehicle").value,imageDataUrl,confirmedIds:Object.keys(LOADED).filter(k=>LOADED[k])});
-    alert("GIV "+r.givNo+" issued — "+DS.despatchNo+" collected.");
-    ["puDriver","puPlate","puId"].forEach(i=>$(i).value=""); $("puPhoto").value=""; $("puVehicle").value="";
+      vehicleType:$("puVehicle").value,imageDataUrl,confirmedIds:Object.keys(LOADED).filter(k=>LOADED[k]),
+      despatchDate,voucherNo,noEmail});
+    alert("GIV "+r.givNo+" issued — "+DS.despatchNo+" collected on "+dmy(despatchDate)+"."+(noEmail?" No email sent.":""));
+    ["puDriver","puPlate","puId","puVoucher"].forEach(i=>$(i).value=""); $("puNoEmail").checked=false; $("puPhoto").value=""; $("puVehicle").value="";
     DS=null; LOADED={}; store.del("ssDsp"); $("puWork").style.display="none"; $("dsPick").style.display="block"; showTab("home");
   }catch(e){ alert(e.message); }
   $("puGo").disabled=false;
